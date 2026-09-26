@@ -49,7 +49,7 @@ genro-bag-js brings the Python genro-bag architecture to JavaScript/TypeScript f
 
 ```bash
 # Install the tagged JavaScript release
-npm install git+https://github.com/genropy/genro-bag-js.git#v0.5.1
+npm install git+https://github.com/genropy/genro-bag-js.git#v0.4.0
 ```
 
 ## Usage
@@ -141,3 +141,18 @@ pnpm typecheck
 Apache License 2.0 - see [LICENSE](LICENSE) for details.
 
 Copyright 2025 Softwell S.r.l.
+
+
+## JSR distribution
+
+The JavaScript package is published as `@genro/bag` on JSR. Use
+`bunx jsr add @genro/bag` or `npx jsr add @genro/bag`.
+Node.js 22+, Bun and modern browsers with Web Crypto are the supported targets.
+TYTX is resolved from JSR; no GitHub package checkout is needed.
+
+[![JSR](https://jsr.io/badges/@genro/bag)](https://jsr.io/@genro/bag)
+
+Deno publication keeps a 24-hour cooldown for external dependencies and exempts
+Genro JSR packages (`jsr:@genro/*` and their `npm:@jsr/genro__*` compatibility
+names). Releases are published only to JSR; the npm form downloads from
+`npm.jsr.io`, not npmjs.com. Verify each published dependency before adopting it.

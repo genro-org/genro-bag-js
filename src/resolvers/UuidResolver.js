@@ -1,15 +1,15 @@
 // Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
 
 import { BagResolver } from '../resolver.js';
-import { randomUUID } from '#uuid';
+
 
 /**
  * UuidResolver - resolver that generates UUIDs.
  *
- * Uses crypto.randomUUID() (Node 18+ and modern browsers).
+ * Uses crypto.globalThis.crypto.randomUUID() (Node 18+ and modern browsers).
  *
  * // DIFF-PYTHON: Python supports uuid1 and uuid4 via the version parameter.
- * // JS only supports uuid4 via crypto.randomUUID(). The version parameter
+ * // JS only supports uuid4 via crypto.globalThis.crypto.randomUUID(). The version parameter
  * // is accepted for API compatibility but only 'uuid4' is implemented.
  *
  * @example
@@ -32,6 +32,6 @@ export class UuidResolver extends BagResolver {
     ]);
 
     load() {
-        return randomUUID();
+        return globalThis.crypto.randomUUID();
     }
 }

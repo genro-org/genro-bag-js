@@ -1,0 +1,27 @@
+{
+  "name": "@genro/bag",
+  "version": "0.5.3",
+  "license": "Apache-2.0",
+  "exports": "./src/index.js",
+  "publish": {
+    "include": [
+      "src/**/*.js",
+      "package.json",
+      "README.md",
+      "LICENSE",
+      "NOTICE"
+    ]
+  },
+  "imports": {
+    "genro-tytx": "jsr:@genro/tytx@^0.15.1"
+  },
+  "nodeModulesDir": "auto",
+  "lock": false,
+  "minimumDependencyAge": {
+    "age": "P1D",
+    "exclude": [
+      "jsr:@genro/*",
+      "npm:@jsr/genro__*"
+    ]
+  }
+}

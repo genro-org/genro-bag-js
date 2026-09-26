@@ -209,28 +209,37 @@ describe('BagQuery - Block 3: Query Methods', () => {
 
         for (const asColumns of [true, false]) {
             it(`accepts deprecated boolean condition=${asColumns}`, t => {
-                const warning = t.mock.method(console, 'warn', () => {});
+                const warnings = [];
+                const previousWarn = console.warn;
+                console.warn = (...args) => warnings.push(args);
+                t.after(() => { console.warn = previousWarn; });
                 const bag = new Bag({a: 1, b: 2});
                 assert.deepEqual(bag.digest('#k,#v', asColumns),
                     bag.digest('#k,#v', null, asColumns));
-                assert.equal(warning.mock.callCount(), 1);
-                assert.match(warning.mock.calls[0].arguments[0], /deprecated/i);
-                assert.match(warning.mock.calls[0].arguments[0], /digest\(what, null, asColumns\)/);
+                assert.equal(warnings.length, 1);
+                assert.match(warnings[0][0], /deprecated/i);
+                assert.match(warnings[0][0], /digest\(what, null, asColumns\)/);
             });
         }
 
         it('preserves empty legacy columns', t => {
-            const warning = t.mock.method(console, 'warn', () => {});
+            const warnings = [];
+                const previousWarn = console.warn;
+                console.warn = (...args) => warnings.push(args);
+                t.after(() => { console.warn = previousWarn; });
             assert.deepEqual(new Bag().digest('#k,#v', true), [[], []]);
-            assert.equal(warning.mock.callCount(), 1);
+            assert.equal(warnings.length, 1);
         });
 
         it('does not warn for callable filters or the explicit column argument', t => {
-            const warning = t.mock.method(console, 'warn', () => {});
+            const warnings = [];
+                const previousWarn = console.warn;
+                console.warn = (...args) => warnings.push(args);
+                t.after(() => { console.warn = previousWarn; });
             const bag = new Bag({a: 1, b: 2});
             assert.deepEqual(bag.digest('#k,#v', n => n.value > 1, true), [['b'], [2]]);
             assert.deepEqual(bag.digest('#k,#v', null, true), [['a', 'b'], [1, 2]]);
-            assert.equal(warning.mock.callCount(), 0);
+            assert.equal(warnings.length, 0);
         });
 
         it('should support condition filter', () => {
