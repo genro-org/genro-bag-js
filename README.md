@@ -49,7 +49,7 @@ genro-bag-js brings the Python genro-bag architecture to JavaScript/TypeScript f
 
 ```bash
 # Install the tagged JavaScript release
-npm install git+https://github.com/genropy/genro-bag-js.git#v0.4.0
+npm install git+https://github.com/genropy/genro-bag-js.git#v0.8.0
 ```
 
 ## Usage
@@ -156,3 +156,29 @@ Deno publication keeps a 24-hour cooldown for external dependencies and exempts
 Genro JSR packages (`jsr:@genro/*` and their `npm:@jsr/genro__*` compatibility
 names). Releases are published only to JSR; the npm form downloads from
 `npm.jsr.io`, not npmjs.com. Verify each published dependency before adopting it.
+
+### Optional developer HTML representation
+
+The experimental inspector is a separate entry point, excluded from the main
+module and browser bundle. It may be removed in a future release.
+
+```js
+import { htmlRepr } from 'genro-bag-js/devtools';
+// With a bundler that supports CSS imports:
+import 'genro-bag-js/devtools/html-repr.css';
+
+const html = htmlRepr(bag, {title: 'Inspect Bag', showTypes: true});
+```
+
+Load the stylesheet separately when not using a CSS-aware bundler. The function
+returns an escaped HTML fragment; rendering it requires no additional script.
+Bag panels and attributes start collapsed. Options `openDepth` (default 0),
+`openAttributes` (default false), `showTypes` (default true), and `className`
+control presentation. The renderer reads static values without invoking
+resolvers. An optional `resolverParameters(resolver)` hook supplies additional
+metadata, including named callbacks; the hook must not execute the resolver.
+Resolver badges use the constructor name, which minification may change.
+
+All nodes are emitted even when collapsed: this is a static developer inspector,
+not a virtualized viewer for large datasets. Ancestor cycles are marked without
+mutating the Bag. The inspector is deliberately not installed on `Bag.prototype`.

@@ -144,3 +144,13 @@ This JS signature intentionally differs from Python's `resolved` flag.
 
 Unlike the historical implementation, insertion does not drop static resolvers.
 This repairs the lazy-copy contract instead of retaining that historical bug.
+
+## Constructor null attributes
+
+`BagNode` accepts `removeNullAttributes` as its eighth constructor argument,
+matching Python's `_remove_null_attributes` position and default (`true`).
+Default construction removes null attributes; passing `false` preserves them.
+Zero, false and empty strings are preserved in either mode. `Bag.setItem`
+forwards its existing null-removal option when constructing a new node as well
+as when updating one. This is an optional argument and a propagation bug fix,
+not a new default policy. See `constructor-null-attributes.test.js`.

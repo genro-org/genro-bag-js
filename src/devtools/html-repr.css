@@ -1,0 +1,69 @@
+/* Theme and layout tokens. */
+:root{color-scheme:light;--bg:#fff;--text:#25313a;--muted:#77818c;--line:#e5e8eb;--focus:#2878b8}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#171a1d;--text:#d5dbe0;--muted:#8f9aa4;--line:#30363c;--focus:#72b9ef}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#171a1d;--text:#d5dbe0;--muted:#8f9aa4;--line:#30363c;--focus:#72b9ef}
+.bag-view{--attribute-lane:190px;--lane-gap:10px;--indent:8px;background:var(--bg);color:var(--text);font:13px/1.4 system-ui,sans-serif;min-width:0}
+.bag-nodes{list-style:none;margin:0;padding:0}
+.bag-node{display:grid;grid-template-columns:minmax(0,1fr) var(--attribute-lane);column-gap:var(--lane-gap);align-items:start;min-width:0}
+.bag-row{grid-column:1;display:grid;grid-template-columns:max-content minmax(90px,32%) minmax(0,1fr) auto;align-items:center;gap:2px;min-height:20px;padding:0 6px;min-width:0}
+.bag-row:hover{background:#ffffff30}
+.bag-label{font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px;color:#4d4940}
+.bag-value{font:12px/1.45 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;min-width:0;color:#38352e}
+.type-badge{display:inline-flex;align-items:center;justify-content:center;justify-self:start;box-sizing:border-box;min-width:12px;height:12px;padding:0 2px;background:#888;color:#fff;border-radius:2px;font:500 8px/12px system-ui,sans-serif}
+.node-tag{font-size:11px;font-style:italic;font-weight:400;margin-left:5px;white-space:nowrap}
+.bag-meta{display:flex;justify-content:flex-end;align-items:center;min-width:0;font-size:11px}
+
+/* Bag surfaces stop before the fixed attribute lane. */
+.bag-branch{position:relative;isolation:isolate;border-radius:5px;margin:3px 0;--bag-surface:#f1f1f1;--right-inset:0px}
+.bag-depth-1{--bag-surface:#e7e7e7}
+.bag-branch::before{content:"";position:absolute;inset:0 calc(var(--attribute-lane) + var(--lane-gap) + var(--right-inset)) 0 0;z-index:-1;background:var(--bag-surface);border:1px solid #d5d5d5;border-radius:5px;pointer-events:none}
+.bag-nodes .bag-nodes>.bag-branch{--right-inset:var(--indent)}
+.bag-toggle{grid-column:1;margin-right:var(--right-inset);background:#707070;border-radius:4px;min-width:0}
+.bag-toggle>summary{display:flex;align-items:center;position:relative;min-height:20px;padding:0 6px 0 22px;color:#fff;border-radius:4px}
+.bag-toggle>summary:hover{background:#646464}
+.bag-toggle>summary .bag-label{padding:0;color:inherit;flex:0 1 auto}
+.bag-branch-name{display:flex;align-items:center;gap:5px;min-width:0}
+.bag-count{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;flex:none;min-width:14px;height:13px;padding:0 3px;border-radius:4px;background:#fff;color:#555;font:500 9px/12px system-ui,sans-serif}
+.bag-branch>.bag-nodes{grid-column:1/-1;padding:3px 0 5px var(--indent)}
+.bag-empty,.bag-cycle{grid-column:1/-1;color:#796f5c;font-size:12px;font-style:italic;margin:5px 0 7px 22px}
+.bag-branch:has(>.bag-toggle:not([open]))>:is(.bag-nodes,.bag-empty,.bag-cycle){display:none}
+
+/* Native disclosures share one centered, outlined arrow. */
+.bag-view summary{cursor:pointer;list-style:none}
+.bag-view summary::-webkit-details-marker{display:none}
+.bag-view summary:focus-visible{outline:2px solid var(--focus);outline-offset:-2px;border-radius:2px}
+:is(.bag-toggle,.bag-attributes)>summary::before{content:"";position:absolute;left:5px;top:50%;width:12px;height:12px;background:center/12px 12px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M4 2 L8 6 L4 10' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");transform:translateY(-50%);transition:transform .12s ease}
+:is(.bag-toggle,.bag-attributes)[open]>summary::before{transform:translateY(-50%) rotate(90deg)}
+
+/* Attributes use a separate, consistently aligned olive panel. */
+.bag-attributes{grid-column:2;grid-row:1;min-width:0;margin:1px 0 2px;border-radius:5px;overflow:hidden}
+.bag-attributes>summary{position:relative;box-sizing:border-box;height:17px;line-height:17px;padding:0 7px 0 20px;background:#7d8559;color:#fff;border-radius:5px;font-size:10px}
+.bag-attributes>summary:hover{background:#6e764d}
+.bag-attributes[open]>summary{border-radius:5px 5px 0 0}
+.bag-attribute-count{margin-left:3px}
+.bag-attributes>dl{display:grid;gap:1px;box-sizing:border-box;margin:0;padding:4px 8px 5px 21px;background:#f3f4e7;border:1px solid #dce0c5;border-top:0;border-radius:0 0 5px 5px}
+.bag-attr{display:grid;grid-template-columns:minmax(0,1fr) minmax(40px,1fr);gap:8px;line-height:16px}
+.bag-attr dt{display:grid;grid-template-columns:max-content minmax(0,1fr);align-items:center;gap:2px;color:#69704e;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bag-attr dd{margin:0;min-width:0}
+.bag-attr code{font:11px/1.4 ui-monospace,monospace;color:#3f452e;overflow-wrap:anywhere}
+
+/* Resolver details are inert: expanding never invokes a callback. */
+.bag-resolver{position:relative;justify-self:end;align-self:start;z-index:3;font-size:10px;color:#675829}
+.bag-branch>.bag-resolver{grid-column:1;grid-row:1;margin:2px calc(var(--right-inset) + 5px) 0 0}
+.bag-branch:has(>.bag-resolver)>.bag-toggle{padding-right:110px}
+.bag-resolver>summary{background:#fff1bb;color:#675829;border:1px solid #e8d997;border-radius:4px;padding:0 5px;font:10px/15px system-ui,sans-serif}
+.bag-resolver>dl{box-sizing:border-box;width:220px;max-width:100%;margin:3px 0 0;padding:7px;background:#fff9df;color:#51482d;border:1px solid #e8d997;border-radius:4px}
+.bag-resolver>dl>div{display:grid;grid-template-columns:90px 1fr;gap:8px;line-height:19px}
+.bag-resolver dt,.bag-resolver dd{margin:0;overflow-wrap:anywhere}
+.bag-no-types .bag-row{grid-template-columns:minmax(90px,32%) minmax(0,1fr) auto}
+.bag-no-types .bag-attr dt{display:block}
+@media(max-width:560px){
+ .bag-view{--attribute-lane:145px;--lane-gap:6px;--indent:5px}
+ .bag-row{grid-template-columns:max-content minmax(50px,1fr);padding-right:3px}
+ .bag-value{grid-column:2;font-size:11px}
+ .bag-label{white-space:normal}
+ .bag-meta{grid-column:2}
+ .bag-attr{grid-template-columns:1fr}
+ .bag-no-types .bag-row{grid-template-columns:minmax(50px,1fr) minmax(0,1fr)}
+ .bag-no-types .bag-value{grid-column:auto}
+}

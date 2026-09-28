@@ -15,8 +15,8 @@
 | Metodo Python | Metodo JS | Status | Note |
 |---------------|-----------|--------|------|
 | `__init__` | `constructor` | ✅ | Minimo: label, value, attr |
-| `__eq__` | `isEqual` | ✅ | |
-| `__ne__` | - | ❌ | Usare `!isEqual()` |
+| `__eq__` | `equalTo` | ✅ | |
+| `__ne__` | - | ❌ | Usare `!equalTo()` |
 | `__str__` | `toString` | ✅ | |
 | `__repr__` | - | ⏳ | |
 | `__getattr__` | - | ⏳ | Per builder delegation |
@@ -149,7 +149,8 @@
 | `keys` | `keys` | ✅ | |
 | `values` | `values` | ✅ | |
 | `items` | `items` | ✅ | |
-| `walk` | `walk` | ✅ | Generator mode |
+| `for_each` | `forEach` | ✅ | Callback, static/deep options |
+| `traverse` | `traverse` | ✅ | Static depth-first node iterator |
 | `_node_flattener` | `_nodeFlattener` | ✅ | Per TyTx serialization |
 | **Backref Methods** | | | |
 | `set_backref` | `setBackref` | ✅ | Tree-leaf mode |
@@ -184,7 +185,7 @@
 |--------------|-----------|--------|------|
 | `BagParser` | `bag_parse.js` | ⏳ | from_xml, from_json, from_tytx |
 | `BagSerializer` | `bag_serialize.js` | ⏳ | to_xml, to_json, to_tytx |
-| `BagQuery` | `bag_query.js` | ⏳ | query, digest, walk, sum, sort |
+| `BagQuery` | `bag_query.js` | ⏳ | query, digest, forEach, traverse, sum, sort |
 
 ---
 

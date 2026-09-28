@@ -338,14 +338,14 @@ describe('BagQuery - Block 3: Query Methods', () => {
     });
 });
 
-describe('BagQuery - Block 2: Walk Callback Mode', () => {
-    describe('walk generator mode', () => {
+describe('BagQuery - Block 2: ForEach Callback Mode', () => {
+    describe('forEach path collection', () => {
         it('should yield [path, node] tuples', () => {
             const bag = new Bag();
             bag.setItem('a', 1);
             bag.setItem('b', 2);
 
-            const results = [...bag.walk()];
+            const results = [...collectPaths(bag)];
 
             assert.equal(results.length, 2);
             assert.equal(results[0][0], 'a');
@@ -360,13 +360,13 @@ describe('BagQuery - Block 2: Walk Callback Mode', () => {
             bag.setItem('b.c', 2);
             bag.setItem('b.d', 3);
 
-            const paths = [...bag.walk()].map(([p]) => p);
+            const paths = [...collectPaths(bag)].map(([p]) => p);
 
             assert.deepEqual(paths, ['a', 'b', 'b.c', 'b.d']);
         });
     });
 
-    describe('walk callback mode', () => {
+    describe('forEach deep mode', () => {
         it('should call callback for each node', () => {
             const bag = new Bag();
             bag.setItem('a', 1);
@@ -374,9 +374,9 @@ describe('BagQuery - Block 2: Walk Callback Mode', () => {
             bag.setItem('c', 3);
 
             const visited = [];
-            bag.walk((node) => {
+            bag.forEach((node) => {
                 visited.push(node.label);
-            });
+            }, {deep: true});
 
             assert.deepEqual(visited, ['a', 'b', 'c']);
         });
@@ -388,9 +388,9 @@ describe('BagQuery - Block 2: Walk Callback Mode', () => {
             bag.setItem('b.d', 3);
 
             const visited = [];
-            bag.walk((node) => {
+            bag.forEach((node) => {
                 visited.push(node.label);
-            });
+            }, {deep: true});
 
             assert.deepEqual(visited, ['a', 'b', 'c', 'd']);
         });
@@ -402,12 +402,12 @@ describe('BagQuery - Block 2: Walk Callback Mode', () => {
             bag.setItem('c', 3);
 
             const visited = [];
-            const result = bag.walk((node) => {
+            const result = bag.forEach((node) => {
                 visited.push(node.label);
                 if (node.label === 'b') {
                     return 'found';
                 }
-            });
+            }, {deep: true});
 
             assert.equal(result, 'found');
             assert.deepEqual(visited, ['a', 'b']);
@@ -418,9 +418,9 @@ describe('BagQuery - Block 2: Walk Callback Mode', () => {
             bag.setItem('a.b.c', 'deep');
 
             const paths = [];
-            bag.walk((node, kw) => {
+            bag.forEach((node, kw) => {
                 paths.push(kw._pathlist.join('.'));
-            }, true, { _pathlist: [] });
+            }, {deep: true, kwargs: {_pathlist: []}});
 
             assert.deepEqual(paths, ['a', 'a.b', 'a.b.c']);
         });
@@ -434,9 +434,9 @@ describe('BagQuery - Block 2: Walk Callback Mode', () => {
             bag.setItem('w', child);
 
             const indices = [];
-            bag.walk((node, kw) => {
+            bag.forEach((node, kw) => {
                 indices.push([...kw._indexlist]);
-            }, true, { _indexlist: [] });
+            }, {deep: true, kwargs: {_indexlist: []}});
 
             assert.deepEqual(indices, [[0], [1], [2], [2, 0]]);
         });
@@ -446,12 +446,12 @@ describe('BagQuery - Block 2: Walk Callback Mode', () => {
             bag.setItem('a.b', 'value');
 
             const results = [];
-            bag.walk((node, kw) => {
+            bag.forEach((node, kw) => {
                 results.push({
                     path: kw._pathlist.join('.'),
                     indices: [...kw._indexlist]
                 });
-            }, true, { _pathlist: [], _indexlist: [] });
+            }, {deep: true, kwargs: {_pathlist: [], _indexlist: []}});
 
             assert.deepEqual(results, [
                 { path: 'a', indices: [0] },
@@ -464,9 +464,9 @@ describe('BagQuery - Block 2: Walk Callback Mode', () => {
             bag.setItem('a', 1);
             bag.setItem('b', 2);
 
-            const result = bag.walk((node) => {
+            const result = bag.forEach((node) => {
                 // Don't return anything
-            });
+            }, {deep: true});
 
             assert.equal(result, null);
         });
@@ -478,12 +478,12 @@ describe('BagQuery - Block 2: Walk Callback Mode', () => {
             bag.setItem('a.e', 'sibling');
 
             const visited = [];
-            const result = bag.walk((node) => {
+            const result = bag.forEach((node) => {
                 visited.push(node.label);
                 if (node.value === 'target') {
                     return node;
                 }
-            });
+            }, {deep: true});
 
             assert.equal(result.label, 'c');
             assert.deepEqual(visited, ['a', 'b', 'c']);
@@ -908,7 +908,7 @@ describe('BagQuery - Block 4: sum and sort', () => {
             bag.setItem('b', 20, { active: false });
             bag.setItem('c', 30, { active: true });
 
-            const result = bag.sum('#v', n => n.getAttr('active'));
+            const result = bag.sum('#v', false, n => n.getAttr('active'));
 
             assert.equal(result, 40);
         });
@@ -924,26 +924,12 @@ describe('BagQuery - Block 4: sum and sort', () => {
             assert.deepEqual(result, [60, 10]);
         });
 
-        it('should sum recursively with deep=true', () => {
+        it('should sum only current-level attributes', () => {
             const bag = new Bag();
-            bag.setItem('level1.a', 10);
-            bag.setItem('level1.b', 20);
-            bag.setItem('level2.c', 30);
-
-            const result = bag.sum('#v', null, true);
-
-            assert.equal(result, 60);
-        });
-
-        it('should sum attributes recursively with deep=true', () => {
-            const bag = new Bag();
-            bag.setItem('group1.item1', 'x', { qty: 5 });
-            bag.setItem('group1.item2', 'y', { qty: 3 });
-            bag.setItem('group2.item3', 'z', { qty: 7 });
-
-            const result = bag.sum('#a.qty', null, true);
-
-            assert.equal(result, 15);
+            bag.setItem('group.item', 1, {qty: 10});
+            bag.setItem('top', 2, {qty: 5});
+            assert.equal(bag.sum('#a.qty'), 5);
+            assert.throws(() => bag.sum('#a.qty', null, true), /deep is no longer supported/);
         });
 
         it('should return 0 for empty bag', () => {
@@ -958,15 +944,8 @@ describe('BagQuery - Block 4: sum and sort', () => {
             bag.setItem('b', 'text');  // non-numeric
             bag.setItem('c', 20);
 
-            // 'text' || 0 = 'text', so sum will be NaN if not handled
-            // Actually in JS: 10 + 'text' + 20 = '10text20' as string
-            // But with (v || 0), 'text' is truthy so stays 'text'
-            // Let's verify actual behavior
-            const result = bag.sum();
-            // Since 'text' is truthy, it's added as-is, resulting in string concatenation
-            // Actually: 0 + (10 || 0) + ('text' || 0) + (20 || 0) = 0 + 10 + 'text' + 20 = '10text20'
-            // Hmm, this might be unexpected but matches Python behavior
-            assert.equal(result, '10text20');
+            assert.equal(bag.sum(), 30);
+            assert.throws(() => bag.sum('#v', true), /non-numeric/);
         });
     });
 
@@ -1083,7 +1062,7 @@ describe('BagQuery - Block 4: sum and sort', () => {
             assert.deepEqual(labels, ['b', 'c', 'a']);
         });
 
-        it('should handle null values by sorting them last', () => {
+        it('should handle null values by sorting them first ascending', () => {
             const bag = new Bag();
             bag.setItem('a', null);
             bag.setItem('b', 10);
@@ -1092,10 +1071,10 @@ describe('BagQuery - Block 4: sum and sort', () => {
             bag.sort('#v');
 
             const values = bag.query('#v');
-            assert.deepEqual(values, [5, 10, null]);
+            assert.deepEqual(values, [null, 5, 10]);
         });
 
-        it('should handle missing attributes by sorting them last', () => {
+        it('should handle missing attributes by sorting them first ascending', () => {
             const bag = new Bag();
             bag.setItem('a', 'x', { score: 50 });
             bag.setItem('b', 'y');  // no score
@@ -1104,7 +1083,7 @@ describe('BagQuery - Block 4: sum and sort', () => {
             bag.sort('#a.score');
 
             const labels = bag.query('#k');
-            assert.deepEqual(labels, ['c', 'a', 'b']);
+            assert.deepEqual(labels, ['b', 'c', 'a']);
         });
 
         it('should support multi-level sort', () => {
@@ -1179,3 +1158,10 @@ describe('BagQuery - Block 4: sum and sort', () => {
         });
     });
 });
+
+function collectPaths(bag) {
+    const result = [];
+    bag.forEach((node, kw) => { result.push([kw._pathlist.join("."), node]); },
+        {deep: true, kwargs: {_pathlist: []}});
+    return result;
+}

@@ -11,21 +11,21 @@ test('forEach visits direct nodes in order, forwards kwargs and never resolves',
     const kwargs = {flag: true};
     const seen = [];
     const result = bag.forEach((node, kw, index) => {
-        assert.equal(kw, kwargs);
+        assert.deepEqual(kw, kwargs);
         seen.push([node.label, index]);
-    }, 'dynamic', kwargs);
+    }, {static: false, kwargs});
     assert.deepEqual(seen, [['child', 0], ['remote', 1]]);
     assert.equal(loads, 0);
-    assert.equal(result, undefined);
+    assert.equal(result, null);
 });
 
-test('forEach follows legacy callback continuation including false and zero stops', () => {
-    for (const value of [false, 0, '', true, 'stop']) {
+test('forEach continues after falsey results and stops on truthy results', () => {
+    for (const value of [true, 'stop']) {
         const seen = [];
         new Bag({a: 1, b: 2}).forEach(node => {seen.push(node.label); return value;});
         assert.deepEqual(seen, ['a']);
     }
-    for (const value of [null, undefined, '__continue__']) {
+    for (const value of [null, undefined, false, 0, '']) {
         const seen = [];
         new Bag({a: 1, b: 2}).forEach(node => {seen.push(node.label); return value;});
         assert.deepEqual(seen, ['a', 'b']);
