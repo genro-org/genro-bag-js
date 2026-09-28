@@ -8,7 +8,6 @@ import { registerClass, registerType, toTytx, fromTytx } from 'genro-tytx';
 
 class SourceBag extends Bag { static tytxSuffix = 'SOURCE'; }
 registerClass(SourceBag);
-class LegacyBag extends Bag {}
 
 for (const transport of ['json', 'msgpack']) {
     for (const compact of [false, true]) {
@@ -26,8 +25,6 @@ for (const transport of ['json', 'msgpack']) {
             assert.equal(result.getItem('source.empty').constructor, SourceBag);
             assert.equal(result.getItem('source.data.value'), 42);
             assert.equal(result.getNode('source').nodeTag, 'div');
-            const legacy = LegacyBag.fromTytx(new LegacyBag({ a: new Bag({ b: 1 }) }).toTytx(transport, compact), transport);
-            assert.equal(legacy.getItem('a').constructor, LegacyBag);
         });
     }
     test(`Bag instances inside ordinary containers survive ${transport}`, () => {

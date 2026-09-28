@@ -13,7 +13,7 @@
     ]
   },
   "imports": {
-    "genro-tytx": "jsr:@genro/tytx@^0.15.1"
+    "genro-tytx": "jsr:@genro/tytx@^0.16.0"
   },
   "nodeModulesDir": "auto",
   "lock": false,
@@ -21,7 +21,9 @@
     "age": "P1D",
     "exclude": [
       "jsr:@genro/*",
-      "npm:@jsr/genro__*"
+      "npm:@jsr/genro__*",
+      "jsr:@genro/tytx",
+      "npm:@jsr/genro__tytx"
     ]
   }
 }
