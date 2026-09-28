@@ -1,6 +1,6 @@
 # Breaking changes
 
-## Unreleased
+## 0.9.0
 
 ### Bag subclasses on the TYTX wire: `__cls`
 
