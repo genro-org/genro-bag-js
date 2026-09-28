@@ -45,7 +45,7 @@ export class Bag {
         this._delSubscribers = {};
 
         if (source) {
-            this.fillFrom(source);
+            this._loadSource(source);
         }
     }
 
@@ -366,6 +366,8 @@ export class Bag {
     /**
      * Set value at a hierarchical path.
      *
+     * An empty path raises RangeError without modifying the Bag.
+     *
      * Resolver handling:
      *   - resolver=null (default): throw if node already has a resolver
      *   - resolver=false: remove existing resolver and set value
@@ -387,6 +389,10 @@ export class Bag {
     setItem(path, value, attr = null, nodePosition = '>', updattr = false,
             removeNullAttributes = true, reason = null, fired = false,
             doTrigger = true, resolver = null, nodeTag = null) {
+        if (path === '') {
+            throw new RangeError('setItem requires a non-empty path');
+        }
+
         const [obj, label] = this._htraverse(path, true);
 
         return obj._nodes.set(label, value, nodePosition, attr, obj,
@@ -411,7 +417,6 @@ export class Bag {
             if (this.backref) {
                 this._onNodeDeleted(node, p, reason);
             }
-            node.parentBag = null;
             return node;
         }
         return null;
@@ -432,15 +437,8 @@ export class Bag {
      * @returns {*} The value of the removed node, or default if not found.
      */
     pop(path, defaultValue = null, reason = null) {
-        let result = defaultValue;
-        const [obj, label] = this._htraverse(path, false, true);
-        if (obj) {
-            const n = obj._pop(label, reason);
-            if (n) {
-                result = n.value;
-            }
-        }
-        return result;
+        const node = this.popNode(path, reason);
+        return node ? node.value : defaultValue;
     }
 
     /**
@@ -465,13 +463,17 @@ export class Bag {
      */
     popNode(path, reason = null) {
         const [obj, label] = this._htraverse(path, false, true);
-        if (obj && label) {
-            const n = obj._pop(label, reason);
-            if (n) {
-                return n;
+        if (!obj || !label) return null;
+        const node = obj._nodes.get(label);
+        if (!node) return null;
+        try {
+            return obj._pop(label, reason);
+        } finally {
+            // Subscribers may fail, reinsert the node, or transfer ownership.
+            if (node.parentBag === obj && obj._nodes._dict[node.label] !== node) {
+                node.parentBag = null;
             }
         }
-        return null;
     }
 
     // -------------------------------------------------------------------------
@@ -801,9 +803,11 @@ export class Bag {
      * @param {boolean} [removeNullAttributes=true] - If true, remove attributes with null value.
      */
     setAttr(path = null, attr = null, removeNullAttributes = true) {
-        const node = this.getNode(path);
+        // Use the native signature: compatibility subclasses may repurpose
+        // getNode's second argument as a reserved legacy slot.
+        const node = Bag.prototype.getNode.call(this, path, true, true);
         if (node) {
-            node.setAttr(attr, true, removeNullAttributes);
+            node.setAttr(attr, true, true, removeNullAttributes);
         }
     }
 
@@ -858,7 +862,9 @@ export class Bag {
      * The getNodes method works as the filter of a list.
      *
      * @param {Function|null} [condition=null] - Optional callable that takes a BagNode and returns bool.
-     * @returns {BagNode[]} List of BagNodes, optionally filtered by condition.
+     * Returns a new list of shared nodes. List mutations do not change the Bag;
+     * node mutations do. Later structural changes are not reflected in the list.
+     * @returns {BagNode[]} Snapshot of BagNodes, optionally filtered by condition.
      */
     getNodes(condition = null) {
         if (!condition) {
@@ -880,7 +886,9 @@ export class Bag {
     getNodeByValue(key, value) {
         for (const node of this._nodes) {
             const nodeValue = node.value;
-            if (nodeValue && nodeValue.get && nodeValue.get(key) === value) {
+            if (nodeValue instanceof Bag) {
+                if (nodeValue.getItem(key) === value) return node;
+            } else if (nodeValue && nodeValue.get && nodeValue.get(key) === value) {
                 return node;
             }
         }
@@ -899,32 +907,38 @@ export class Bag {
      * depth-first through the subtree before checking siblings.
      *
      * @param {string} attr - Attribute name to search.
-     * @param {*} value - Attribute value to match.
+     * @param {*} value - Attribute value; undefined searches for presence.
+     * @param {boolean} [caseInsensitive=false] - Compare strings ignoring case.
+     * @param {boolean} [deep_first=false] - Visit subtrees before next siblings.
      * @returns {BagNode|null} BagNode if found, null otherwise.
      */
-    getNodeByAttr(attr, value, caseInsensitive = false) {
-        const existsOnly = arguments.length === 1;
+    getNodeByAttr(attr, value, caseInsensitive = false, deep_first = false) {
+        const existsOnly = value === undefined;
         const expected = caseInsensitive && typeof value === 'string' ? value.toLowerCase() : value;
-        const subBags = [];
-        for (const node of this._nodes) {
-            if (attr in node.attr) {
-                const current = caseInsensitive && typeof node.attr[attr] === 'string'
-                    ? node.attr[attr].toLowerCase() : node.attr[attr];
-                if (existsOnly || current == expected) return node;
+        const search = bag => {
+            const subBags = [];
+            for (const node of bag._nodes) {
+                if (attr in node.attr) {
+                    const current = caseInsensitive && typeof node.attr[attr] === 'string'
+                        ? node.attr[attr].toLowerCase() : node.attr[attr];
+                    if (existsOnly || current == expected) return node;
+                }
+                if (node._value instanceof Bag) {
+                    if (deep_first) {
+                        const found = search(node._value);
+                        if (found) return found;
+                    } else {
+                        subBags.push(node._value);
+                    }
+                }
             }
-            if (node._value instanceof Bag) {
-                subBags.push(node);
+            for (const child of subBags) {
+                const found = search(child);
+                if (found) return found;
             }
-        }
-
-        for (const node of subBags) {
-            const found = node._value.getNodeByAttr(attr, value, caseInsensitive);
-            if (found) {
-                return found;
-            }
-        }
-
-        return null;
+            return null;
+        };
+        return search(this);
     }
 
     /**
@@ -1011,7 +1025,7 @@ export class Bag {
             whatsplit = what;
         }
 
-        const _extractValue = (node, w, path, isDeep) => {
+        const _extractValue = (node, w, path, isDeep, readValue) => {
             if (w === '#k') {
                 return node.label;
             } else if (w === '#p') {
@@ -1021,12 +1035,12 @@ export class Bag {
             } else if (typeof w === 'function') {
                 return w(node);
             } else if (w === '#v') {
-                const v = node.getValue(isStatic);
+                const v = readValue();
                 // With deep=true, Bag values return null (content comes in later iterations)
                 return isDeep && v instanceof Bag ? null : v;
             } else if (w.startsWith('#v.')) {
                 const innerPath = w.split('.').slice(1).join('.');
-                const value = node.getValue(isStatic);
+                const value = readValue();
                 return value && value.getItem ? value.getItem(innerPath) : null;
             } else if (w === '#__v') {
                 return node.getValue(true);  // Always static
@@ -1034,58 +1048,45 @@ export class Bag {
                 const attr = w.includes('.') ? w.split('.').slice(1).join('.') : null;
                 return node.getAttr(attr);
             } else {
-                const value = node.getValue(isStatic);
+                const value = readValue();
                 return value && value.getItem ? value.getItem(w) : null;
             }
         };
 
-        const _shouldInclude = (node) => {
-            // Unfiltered queries must not resolve values merely to classify nodes.
-            if (leaf && branch) return condition === null || condition(node);
-            const isBranch = node.getValue(isStatic) instanceof Bag;
-            if (isBranch && !branch) {
-                return false;
-            }
-            if (!isBranch && !leaf) {
-                return false;
-            }
-            return condition === null || condition(node);
-        };
-
         function* _iterDigest() {
             let count = 0;
-            if (deep) {
-                // Use walk() for recursive traversal
-                for (const [path, node] of obj.walk(isStatic)) {
-                    if (_shouldInclude(node)) {
-                        if (whatsplit.length === 1) {
-                            yield _extractValue(node, whatsplit[0], path, true);
-                        } else {
-                            yield whatsplit.map(w => _extractValue(node, w, path, true));
+            function* visit(bag, prefix) {
+                for (const node of bag._nodes) {
+                    const path = prefix ? `${prefix}.${node.label}` : node.label;
+                    // Per-visit state, independent of the resolver's own cache.
+                    let loaded = false;
+                    let value;
+                    const readValue = () => {
+                        if (!loaded) {
+                            value = node.getValue(isStatic);
+                            loaded = true;
                         }
+                        return value;
+                    };
+                    const included = (leaf && branch) ||
+                        (readValue() instanceof Bag ? branch : leaf);
+                    if (included && (condition === null || condition(node))) {
+                        yield whatsplit.length === 1
+                            ? _extractValue(node, whatsplit[0], path, deep, readValue)
+                            : whatsplit.map(w => _extractValue(node, w, path, deep, readValue));
                         count++;
-                        if (limit !== null && count >= limit) {
-                            return;
-                        }
+                        if (limit !== null && count >= limit) return;
                     }
-                }
-            } else {
-                // First level only
-                for (const node of obj._nodes) {
-                    if (_shouldInclude(node)) {
-                        const path = node.label;
-                        if (whatsplit.length === 1) {
-                            yield _extractValue(node, whatsplit[0], path, false);
-                        } else {
-                            yield whatsplit.map(w => _extractValue(node, w, path, false));
-                        }
-                        count++;
-                        if (limit !== null && count >= limit) {
-                            return;
+                    if (deep) {
+                        const child = readValue();
+                        if (child instanceof Bag) {
+                            yield* visit(child, path);
+                            if (limit !== null && count >= limit) return;
                         }
                     }
                 }
             }
+            yield* visit(obj, '');
         }
 
         if (iter) {
@@ -1093,6 +1094,25 @@ export class Bag {
         }
 
         return [..._iterDigest()];
+    }
+
+    /**
+     * Return [relative path, value] pairs for non-Bag leaves.
+     * Resolve each node once per occurrence. Empty Bags produce no leaf entry.
+     * Paths do not require parent backrefs.
+     */
+    getLeaves() {
+        const result = [];
+        const collect = (bag, prefix) => {
+            for (const node of bag._nodes) {
+                const path = prefix ? `${prefix}.${node.label}` : node.label;
+                const value = node.getValue(false);
+                if (value instanceof Bag) collect(value, path);
+                else result.push([path, value]);
+            }
+        };
+        collect(this, '');
+        return result;
     }
 
     /**
@@ -1153,39 +1173,38 @@ export class Bag {
     }
 
     /**
-     * Sum values or attributes.
-     *
-     * @param {string} [what='#v'] - What to sum (same syntax as query).
-     *     - '#v': sum values
-     *     - '#a.attrname': sum attribute
-     *     - '#v,#a.price': multiple sums (returns array)
-     * @param {Function|boolean|null} [condition=null] - Optional callable filter (receives BagNode, returns bool).
-     * A boolean is the deprecated legacy asColumns argument and emits a warning.
-     * @param {boolean} [deep=false] - If true, recursively sum through nested Bags.
-     * @returns {number|number[]} Sum as number, or array of numbers if multiple what specs.
-     *
-     * @example
-     * bag.sum()                    // sum all values
-     * bag.sum('#a.price')          // sum 'price' attribute
-     * bag.sum('#v,#a.qty')         // [sum_values, sum_qty]
-     * bag.sum('#v', n => n.getAttr('active'))  // filtered sum
-     * bag.sum('#a.qty', null, true)  // recursive sum
+     * Sum selected values at the current level; never traverse recursively.
+     * @param {string} [what='#v'] - Query criterion, or comma-separated criteria.
+     * @param {boolean} [strict=false] - Return null for null/undefined/empty string.
+     * Otherwise these values contribute zero. Non-numeric values are ignored
+     * unless strict, which raises TypeError. Zero and false remain valid.
+     * @param {Function|null} [condition=null] - Optional BagNode predicate.
+     * @returns {number|null|Array} One result, or one result per criterion.
      */
-    sum(what = '#v', condition = null, deep = false) {
-        if (what.includes(',')) {
-            return what.split(',').map(w => {
-                let total = 0;
-                for (const v of this.query(w.trim(), condition, false, deep)) {
-                    total += (v || 0);
+    sum(what = '#v', strict = false, condition = null) {
+        if (strict != null && typeof strict !== 'boolean') {
+            throw new TypeError('sum strict must be a boolean; pass condition as the third argument');
+        }
+        if (condition != null && typeof condition !== 'function') {
+            throw new TypeError('sum condition must be callable; deep is no longer supported');
+        }
+        const total = criterion => {
+            let result = 0;
+            let missing = false;
+            for (const value of this.query(criterion, condition)) {
+                if (value == null || value === '') {
+                    missing = true;
+                    continue;
                 }
-                return total;
-            });
-        }
-        let total = 0;
-        for (const v of this.query(what, condition, false, deep)) {
-            total += (v || 0);
-        }
-        return total;
+                if (typeof value !== 'number' && typeof value !== 'boolean') {
+                    if (strict) throw new TypeError(`sum encountered non-numeric value: ${typeof value}`);
+                    continue;
+                }
+                result += value;
+            }
+            return strict && missing ? null : result;
+        };
+        return what.includes(',') ? what.split(',').map(w => total(w.trim())) : total(what);
     }
 
     /**
@@ -1223,11 +1242,11 @@ export class Bag {
          * Create sort key handling null/undefined and case sensitivity.
          * @param {*} value - The value to create key for.
          * @param {boolean} caseInsensitive - Whether to ignore case for strings.
-         * @returns {Array} Tuple [priority, value] where priority 1 means null (sort last).
+         * @returns {Array} Tuple [priority, value] where priority -1 means null (sort first ascending).
          */
         const sortKey = (value, caseInsensitive) => {
             if (value === null || value === undefined) {
-                return [1, ''];  // null/undefined values sort last
+                return [-1, ''];  // null/undefined first ascending, last descending
             }
             if (caseInsensitive && typeof value === 'string') {
                 return [0, value.toLowerCase()];
@@ -1242,7 +1261,7 @@ export class Bag {
          * @returns {number} Comparison result for Array.sort.
          */
         const compareKeys = (a, b) => {
-            // First compare by priority (nulls last)
+            // First compare by priority (nulls first ascending)
             if (a[0] !== b[0]) {
                 return a[0] - b[0];
             }
@@ -1287,10 +1306,12 @@ export class Bag {
                     keyFn = n => sortKey(n.getAttr(attrname), caseInsensitive);
                 } else {
                     // Sort by field in value
-                    keyFn = n => sortKey(
-                        n.value ? n.value[what] : null,
-                        caseInsensitive
-                    );
+                    keyFn = n => {
+                        const value = n.value;
+                        const field = value instanceof Bag ? value.getItem(what) :
+                            (value ? value[what] : null);
+                        return sortKey(field, caseInsensitive);
+                    };
                 }
 
                 this._nodes._list.sort((a, b) => {
@@ -1308,7 +1329,8 @@ export class Bag {
      * @param {Bag} other - Bag to compare with.
      * @returns {boolean} True if both Bags have same nodes with same values and attributes.
      */
-    isEqual(other) {
+    equalTo(other) {
+        if (!(other instanceof Bag)) return false;
         return this._nodes.isEqual(other._nodes);
     }
 
@@ -1427,11 +1449,15 @@ export class Bag {
      *
      * @param {boolean} [ascii=false] - If true, convert keys to ASCII.
      * @param {boolean} [lower=false] - If true, convert keys to lowercase.
+     * @param {boolean} [recursive=false] - Convert nested Bags (not ordinary objects/arrays).
+     * @param {boolean} [excludeNullValues=false] - Omit null/undefined, retaining empty Bags.
      * @returns {Object} Plain JavaScript object with key-value pairs.
      */
-    asDict(ascii = false, lower = false) {
+    asDict(ascii = false, lower = false, recursive = false, excludeNullValues = false) {
         const result = {};
         for (const el of this._nodes) {
+            let value = el.value;
+            if (excludeNullValues && value == null) continue;
             let key = el.label;
             if (ascii) {
                 key = String(key);
@@ -1439,7 +1465,12 @@ export class Bag {
             if (lower) {
                 key = key.toLowerCase();
             }
-            result[key] = el.value;
+            if (recursive && value instanceof Bag) {
+                value = Bag.prototype.asDict.call(value, ascii, lower, recursive, excludeNullValues);
+            }
+            Object.defineProperty(result, key, {
+                value, enumerable: true, writable: true, configurable: true
+            });
         }
         return result;
     }
@@ -1562,12 +1593,12 @@ export class Bag {
     _fillFromBag(other) {
         this.clear();
         for (const node of other) {
-            // Deep copy the value if it's a Bag
-            let value = node.value;
-            if (value instanceof Bag) {
-                value = value.deepcopy();
-            }
-            this.setItem(node.label, value, { ...node.getAttr() });
+            const copied = new this.nodeClass(this, node.label);
+            copied.replace(node);
+            copied.nodeTag = node.nodeTag;
+            copied.xmlTag = node.xmlTag;
+            this._nodes._list.push(copied);
+            this._nodes._dict[copied.label] = copied;
         }
     }
 
@@ -1585,7 +1616,7 @@ export class Bag {
         for (const [key, value] of Object.entries(data)) {
             if (value !== null && typeof value === 'object' && !Array.isArray(value)
                     && !(value instanceof Bag) && !(value instanceof BagNode)) {
-                this.setItem(key, this.createChildBag().fillFrom(value));
+                this.setItem(key, this.createChildBag()._loadSource(value));
             } else {
                 this.setItem(key, value);
             }
@@ -1595,165 +1626,127 @@ export class Bag {
     /**
      * Fill this Bag from a source (another Bag or plain object).
      *
-     * Clears current contents and populates from the source:
+     * Prepares replacement contents before changing this Bag:
      * - If source is null/undefined: no-op
      * - If source is a Bag: copies all nodes (deep copy for nested Bags)
      * - If source is a plain object: keys become labels, values become node values.
      *   Nested objects are recursively converted to Bags.
+     *
+     * Preparation errors leave this Bag unchanged. Attached Bags emit one
+     * upd_value event after replacement, carrying the previous content.
+     * Listener exceptions propagate after the replacement has committed.
      *
      * @param {Bag|Object|null} source - Source to fill from.
      * @returns {Bag} This Bag (for chaining).
      *
      * @example
      * const bag = new Bag();
-     * bag.fillFrom({ a: 1, b: { c: 2 } });
+     * bag.replace(new Bag({ a: 1, b: { c: 2 } }));
      * // bag has 'a' = 1, 'b' = Bag with 'c' = 2
      *
      * const other = new Bag();
      * other.setItem('x', 10);
-     * bag.fillFrom(other);
+     * bag.replace(other);
      * // bag now has only 'x' = 10
      */
-    fillFrom(source) {
-        if (source == null) {
+    _loadSource(source) {
+        if (source == null) return this;
+        const prepared = this.createChildBag();
+        if (source instanceof Bag) {
+            prepared._fillFromBag(source);
+        } else if (typeof source === 'object' && !Array.isArray(source)) {
+            prepared._fillFromDict(source);
+        } else {
             return this;
         }
-        if (source instanceof Bag) {
-            this._fillFromBag(source);
-        } else if (typeof source === 'object' && !Array.isArray(source)) {
-            this._fillFromDict(source);
+        return this._replacePrepared(prepared);
+    }
+
+    /** Replace all contents from a Bag, preserving identity. Returns this. */
+    replace(other) {
+        if (!(other instanceof Bag)) throw new TypeError('Bag.replace expects a Bag');
+        if (other === this) return this;
+        const prepared = this.createChildBag();
+        prepared._fillFromBag(other);
+        return this._replacePrepared(prepared);
+    }
+
+    _replacePrepared(prepared) {
+        // Preparation must finish before touching the destination, including
+        // when the source is this Bag. Keep the previous content as a snapshot.
+        for (const node of this._nodes) {
+            node.parentBag = null;
+            const value = node.getValue(true);
+            if (value instanceof Bag) value.clearBackref();
+        }
+        const oldNodes = this._nodes;
+        this._nodes = prepared._nodes;
+        prepared._nodes = oldNodes;
+        this._nodes._parentBag = this.backref ? this : null;
+        prepared._nodes._parentBag = null;
+        for (const node of this._nodes) node.parentBag = this;
+        for (const node of prepared._nodes) node._parentBag = prepared;
+
+        if (this.backref && this.parent && this.parentNode) {
+            this.parent._onNodeChanged(this.parentNode,
+                [this.parentNode.label], 'upd_value', prepared);
         }
         return this;
     }
 
-    forEach(callback, mode, kwargs) {
-        // Visit immediate nodes without resolving their values. The mode argument
-        // is retained for GenroJS callers; this traversal is always static.
-        const nodes = this.getNodes();
-        for (let index = 0; index < nodes.length; index++) {
-            const result = callback(nodes[index], kwargs, index);
-            if (result != null && result !== '__continue__') break;
+    /**
+     * Visit direct nodes, or the full tree with deep=true.
+     * Null/undefined descends; falsey non-null results skip children;
+     * a truthy result stops the visit and is returned.
+     * Callback receives (node, kwargs, siblingIndex).
+     */
+    forEach(callback, {static: isStatic = true, deep = false, kwargs = {}} = {}) {
+        if (typeof callback !== 'function') throw new TypeError('forEach requires a callback');
+        const visit = (bag, context) => {
+            for (let index = 0; index < bag._nodes.length; index++) {
+                const node = bag._nodes._list[index];
+                const kw = {...context};
+                if ('_pathlist' in context) kw._pathlist = [...context._pathlist, node.label];
+                if ('_indexlist' in context) kw._indexlist = [...context._indexlist, index];
+                const result = callback(node, kw, index);
+                if (result) return result;
+                if (result == null && deep) {
+                    const value = node.getValue(isStatic);
+                    if (value instanceof Bag) {
+                        const innerResult = visit(value, kw);
+                        if (innerResult) return innerResult;
+                    }
+                }
+            }
+            return null;
+        };
+        return visit(this, kwargs);
+    }
+
+    /**
+     * Yield original nodes depth-first, parent before children.
+     * Values are read statically: lazy resolvers are not invoked.
+     * Shared subtrees are visited at each path, as in legacy Python.
+     * @yields {BagNode}
+     */
+    *traverse() {
+        for (const node of this._nodes) {
+            yield node;
+            const value = node.getValue(true);
+            if (value instanceof Bag) {
+                yield* value.traverse();
+            }
         }
     }
 
-    // -------------------------------------------------------------------------
-    // walk - Depth-first tree traversal
-    // -------------------------------------------------------------------------
-
-    /**
-     * Walk the tree depth-first.
-     *
-     * Two modes of operation:
-     *
-     * 1. **Generator mode** (no callback or boolean first arg): Returns a generator yielding
-     *    [path, node] tuples for all nodes in the tree. This is the
-     *    recommended approach.
-     *
-     * 2. **Legacy callback mode** (function first arg): Calls callback(node, kwargs) for each
-     *    node. Supports early exit (if callback returns truthy value),
-     *    _pathlist and _indexlist kwargs for path tracking.
-     *
-     * @param {Function|boolean} [callbackOrStatic=true] - If function, use callback mode.
-     *     If boolean or omitted, use generator mode with isStatic.
-     * @param {boolean} [isStatic=true] - If true, don't trigger resolvers during traversal.
-     *     Only used in callback mode (second argument).
-     * @param {Object} [kwargs={}] - Passed to callback. Special keys:
-     *     - _pathlist: array of labels from root (auto-updated by walk)
-     *     - _indexlist: array of indices from root (auto-updated by walk)
-     * @returns {Generator|*} Generator of [path, node] if generator mode.
-     *     If callback provided: value returned by callback if truthy, else null.
-     *
-     * @example
-     * // Generator mode (modern, recommended)
-     * for (const [path, node] of bag.walk()) {
-     *     console.log(`${path}: ${node.value}`);
-     * }
-     *
-     * @example
-     * // Generator mode with isStatic=false
-     * for (const [path, node] of bag.walk(false)) {
-     *     console.log(`${path}: ${node.value}`);
-     * }
-     *
-     * @example
-     * // Legacy callback mode with path tracking
-     * bag.walk((node, kw) => {
-     *     console.log(kw._pathlist.join('.'));
-     * }, true, { _pathlist: [] });
-     */
-    walk(callbackOrStatic = true, isStatic = true, kwargs = {}) {
-        if (typeof callbackOrStatic === 'function') {
-            // Legacy callback mode
-            return this._walkCallback(callbackOrStatic, isStatic, kwargs);
-        }
-        // Generator mode - first arg is isStatic (boolean or undefined)
-        const staticMode = typeof callbackOrStatic === 'boolean' ? callbackOrStatic : true;
-        return this._walkGenerator(staticMode);
-    }
-
-    /**
-     * Internal generator walk helper.
-     *
-     * @param {boolean} isStatic - If true, don't trigger resolvers.
-     * @yields {Array} [path, node] tuples.
-     */
-    *_walkGenerator(isStatic) {
-        yield* this._walkInner('', isStatic);
-    }
-
-    /**
-     * Internal recursive walk helper for generator mode.
-     *
-     * @param {string} prefix - Current path prefix.
-     * @param {boolean} isStatic - If true, don't trigger resolvers.
-     * @yields {Array} [path, node] tuples.
-     */
-    *_walkInner(prefix, isStatic) {
+    /** Stream path/node pairs for internal query and serialization use. */
+    *_iterNodesWithPaths(isStatic = true, prefix = '') {
         for (const node of this._nodes) {
             const path = prefix ? `${prefix}.${node.label}` : node.label;
             yield [path, node];
-
             const value = node.getValue(isStatic);
-            if (value instanceof Bag) {
-                yield* value._walkInner(path, isStatic);
-            }
+            if (value instanceof Bag) yield* value._iterNodesWithPaths(isStatic, path);
         }
-    }
-
-    /**
-     * Internal callback walk helper.
-     *
-     * @param {Function} callback - Callback function(node, kwargs).
-     * @param {boolean} isStatic - If true, don't trigger resolvers.
-     * @param {Object} kwargs - Kwargs passed to callback.
-     * @returns {*} Value returned by callback if truthy, else null.
-     */
-    _walkCallback(callback, isStatic, kwargs) {
-        for (let idx = 0; idx < this._nodes.length; idx++) {
-            const node = this._nodes._list[idx];
-            const kw = { ...kwargs };
-
-            if ('_pathlist' in kwargs) {
-                kw._pathlist = [...kwargs._pathlist, node.label];
-            }
-            if ('_indexlist' in kwargs) {
-                kw._indexlist = [...kwargs._indexlist, idx];
-            }
-
-            const result = callback(node, kw);
-            if (result) {
-                return result;
-            }
-
-            const value = node.getValue(isStatic);
-            if (value instanceof Bag) {
-                const innerResult = value._walkCallback(callback, isStatic, kw);
-                if (innerResult) {
-                    return innerResult;
-                }
-            }
-        }
-        return null;
     }
 
     // -------------------------------------------------------------------------
@@ -1918,11 +1911,7 @@ export class Bag {
     toXml(options = {}) {
         const { pretty = false, encoding = 'UTF-8', docHeader = null, selfClosedTags = null } = options;
 
-        let content = this._bagToXml(selfClosedTags);
-
-        if (pretty) {
-            content = this._prettifyXml(content);
-        }
+        let content = this._bagToXml(selfClosedTags, pretty);
 
         if (docHeader === true) {
             content = `<?xml version='1.0' encoding='${encoding}'?>\n${content}`;
@@ -1937,19 +1926,20 @@ export class Bag {
      * Convert Bag to XML string (internal).
      * @private
      */
-    _bagToXml(selfClosedTags = null) {
+    _bagToXml(selfClosedTags = null, pretty = false, depth = 0) {
         const parts = [];
         for (const node of this._nodes) {
-            parts.push(this._nodeToXml(node, selfClosedTags));
+            parts.push((pretty ? '  '.repeat(depth) : '') +
+                this._nodeToXml(node, selfClosedTags, pretty, depth));
         }
-        return parts.join('');
+        return parts.join(pretty ? '\n' : '');
     }
 
     /**
      * Convert a BagNode to XML string (internal).
      * @private
      */
-    _nodeToXml(node, selfClosedTags = null) {
+    _nodeToXml(node, selfClosedTags = null, pretty = false, depth = 0) {
         // Priority: xml_tag > node_tag > label (same as Python)
         const originalTag = node.xmlTag || node.nodeTag || node.label;
         const tag = this._sanitizeTag(originalTag);
@@ -1979,8 +1969,13 @@ export class Bag {
 
         // Check if value is a Bag
         if (value && typeof value._bagToXml === 'function') {
-            const inner = value._bagToXml(selfClosedTags);
+            // Never add whitespace inside a subtree that explicitly preserves it.
+            pretty = pretty && node.attr?.['xml:space'] !== 'preserve';
+            const inner = value._bagToXml(selfClosedTags, pretty, depth + 1);
             if (inner) {
+                if (pretty) {
+                    return `<${tag}${attrsStr}>\n${inner}\n${'  '.repeat(depth)}</${tag}>`;
+                }
                 return `<${tag}${attrsStr}>${inner}</${tag}>`;
             }
             // Empty Bag
@@ -2033,32 +2028,6 @@ export class Bag {
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;');
-    }
-
-    /**
-     * Pretty-print XML with indentation.
-     * @private
-     */
-    _prettifyXml(xml) {
-        let formatted = '';
-        let indent = '';
-        const tab = '  ';
-
-        xml.split(/>\s*</).forEach((node, index) => {
-            if (index > 0) {
-                if (node.match(/^\/\w/)) {
-                    // Closing tag
-                    indent = indent.substring(tab.length);
-                }
-                formatted += '\n' + indent;
-            }
-            formatted += (index > 0 ? '<' : '') + node + (index < xml.split(/>\s*</).length - 1 ? '>' : '');
-            if (node.match(/^<?\w[^>]*[^/]$/) && !node.startsWith('/')) {
-                // Opening tag (not self-closing)
-                indent += tab;
-            }
-        });
-        return formatted;
     }
 
     /**
@@ -2128,6 +2097,14 @@ export class Bag {
             if (tagAttribute && tagAttribute in attr) {
                 label = attr[tagAttribute];
                 delete attr[tagAttribute];
+            }
+
+            // Repeated XML elements must not replace earlier siblings.
+            // Keep their original tag separately for serialization.
+            const requestedLabel = label;
+            let suffix = 1;
+            while (bag.getNode(label)) {
+                label = `${requestedLabel}_${suffix++}`;
             }
 
             // Check if has child elements (nested Bag)

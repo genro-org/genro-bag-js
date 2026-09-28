@@ -894,7 +894,7 @@ describe('Bag', () => {
         });
     });
 
-    describe('walk', () => {
+    describe('forEach path collection', () => {
         it('should walk flat bag', () => {
             const bag = new Bag();
             bag.setItem('a', 1);
@@ -902,7 +902,7 @@ describe('Bag', () => {
             bag.setItem('c', 3);
 
             const result = [];
-            for (const [path, node] of bag.walk()) {
+            for (const [path, node] of collectPaths(bag)) {
                 result.push([path, node.value]);
             }
 
@@ -921,7 +921,7 @@ describe('Bag', () => {
             bag.setItem('c', 3);
 
             const paths = [];
-            for (const [path] of bag.walk()) {
+            for (const [path] of collectPaths(bag)) {
                 paths.push(path);
             }
 
@@ -933,7 +933,7 @@ describe('Bag', () => {
             bag.setItem('level1.level2.level3', 'deep');
 
             const result = [];
-            for (const [path, node] of bag.walk()) {
+            for (const [path, node] of collectPaths(bag)) {
                 result.push([path, node.value instanceof Bag ? 'Bag' : node.value]);
             }
 
@@ -946,7 +946,7 @@ describe('Bag', () => {
 
         it('should walk empty bag', () => {
             const bag = new Bag();
-            const result = [...bag.walk()];
+            const result = [...collectPaths(bag)];
             assert.deepStrictEqual(result, []);
         });
     });
@@ -1020,7 +1020,7 @@ describe('Bag', () => {
         });
     });
 
-    describe('isEqual', () => {
+    describe('equalTo', () => {
         it('should return true for equal bags', () => {
             const bag1 = new Bag();
             bag1.setItem('a', 1);
@@ -1030,7 +1030,7 @@ describe('Bag', () => {
             bag2.setItem('a', 1);
             bag2.setItem('b', 2);
 
-            assert.strictEqual(bag1.isEqual(bag2), true);
+            assert.strictEqual(bag1.equalTo(bag2), true);
         });
 
         it('should return false for different values', () => {
@@ -1040,7 +1040,7 @@ describe('Bag', () => {
             const bag2 = new Bag();
             bag2.setItem('a', 2);
 
-            assert.strictEqual(bag1.isEqual(bag2), false);
+            assert.strictEqual(bag1.equalTo(bag2), false);
         });
 
         it('should return false for different keys', () => {
@@ -1050,7 +1050,7 @@ describe('Bag', () => {
             const bag2 = new Bag();
             bag2.setItem('b', 1);
 
-            assert.strictEqual(bag1.isEqual(bag2), false);
+            assert.strictEqual(bag1.equalTo(bag2), false);
         });
 
         it('should return false for different lengths', () => {
@@ -1061,7 +1061,7 @@ describe('Bag', () => {
             const bag2 = new Bag();
             bag2.setItem('a', 1);
 
-            assert.strictEqual(bag1.isEqual(bag2), false);
+            assert.strictEqual(bag1.equalTo(bag2), false);
         });
 
         it('should compare attributes', () => {
@@ -1074,8 +1074,8 @@ describe('Bag', () => {
             const bag3 = new Bag();
             bag3.setItem('a', 1, { color: 'blue' });
 
-            assert.strictEqual(bag1.isEqual(bag2), true);
-            assert.strictEqual(bag1.isEqual(bag3), false);
+            assert.strictEqual(bag1.equalTo(bag2), true);
+            assert.strictEqual(bag1.equalTo(bag3), false);
         });
 
         it('should compare nested bags recursively', () => {
@@ -1088,15 +1088,15 @@ describe('Bag', () => {
             const bag3 = new Bag();
             bag3.setItem('parent.child', 'different');
 
-            assert.strictEqual(bag1.isEqual(bag2), true);
-            assert.strictEqual(bag1.isEqual(bag3), false);
+            assert.strictEqual(bag1.equalTo(bag2), true);
+            assert.strictEqual(bag1.equalTo(bag3), false);
         });
 
         it('should return true for empty bags', () => {
             const bag1 = new Bag();
             const bag2 = new Bag();
 
-            assert.strictEqual(bag1.isEqual(bag2), true);
+            assert.strictEqual(bag1.equalTo(bag2), true);
         });
     });
 
@@ -1580,24 +1580,20 @@ describe('Bag', () => {
         });
     });
 
-    describe('fillFrom', () => {
-        it('should do nothing when source is null', () => {
+    describe('replace', () => {
+        it('rejects null without mutation', () => {
             const bag = new Bag();
             bag.setItem('existing', 'value');
 
-            const result = bag.fillFrom(null);
-
-            assert.strictEqual(result, bag);
+            assert.throws(() => bag.replace(null), TypeError);
             assert.strictEqual(bag.getItem('existing'), 'value');
         });
 
-        it('should do nothing when source is undefined', () => {
+        it('rejects undefined without mutation', () => {
             const bag = new Bag();
             bag.setItem('existing', 'value');
 
-            const result = bag.fillFrom(undefined);
-
-            assert.strictEqual(result, bag);
+            assert.throws(() => bag.replace(undefined), TypeError);
             assert.strictEqual(bag.getItem('existing'), 'value');
         });
 
@@ -1605,7 +1601,7 @@ describe('Bag', () => {
             const bag = new Bag();
             bag.setItem('old', 'data');
 
-            bag.fillFrom({ a: 1, b: 2 });
+            bag.replace(new Bag({ a: 1, b: 2 }));
 
             assert.strictEqual(bag.getItem('old'), null);  // Cleared
             assert.strictEqual(bag.getItem('a'), 1);
@@ -1614,13 +1610,13 @@ describe('Bag', () => {
 
         it('should convert nested objects to Bags', () => {
             const bag = new Bag();
-            bag.fillFrom({
+            bag.replace(new Bag({
                 name: 'test',
                 config: {
                     host: 'localhost',
                     port: 5432
                 }
-            });
+            }));
 
             assert.strictEqual(bag.getItem('name'), 'test');
             assert.ok(bag.getItem('config') instanceof Bag);
@@ -1630,13 +1626,13 @@ describe('Bag', () => {
 
         it('should convert deeply nested objects', () => {
             const bag = new Bag();
-            bag.fillFrom({
+            bag.replace(new Bag({
                 level1: {
                     level2: {
                         level3: 'deep'
                     }
                 }
-            });
+            }));
 
             assert.strictEqual(bag.getItem('level1.level2.level3'), 'deep');
         });
@@ -1648,7 +1644,7 @@ describe('Bag', () => {
 
             const bag = new Bag();
             bag.setItem('old', 'data');
-            bag.fillFrom(source);
+            bag.replace(source);
 
             assert.strictEqual(bag.getItem('old'), null);  // Cleared
             assert.strictEqual(bag.getItem('x'), 10);
@@ -1662,7 +1658,7 @@ describe('Bag', () => {
             source.setItem('outer', inner);
 
             const bag = new Bag();
-            bag.fillFrom(source);
+            bag.replace(source);
 
             // Modify source inner
             inner.setItem('deep', 'changed');
@@ -1676,7 +1672,7 @@ describe('Bag', () => {
             source.setItem('item', 'value', { color: 'red', size: 10 });
 
             const bag = new Bag();
-            bag.fillFrom(source);
+            bag.replace(source);
 
             const node = bag.getNode('item');
             assert.strictEqual(node.getAttr().color, 'red');
@@ -1685,14 +1681,14 @@ describe('Bag', () => {
 
         it('should return this for chaining', () => {
             const bag = new Bag();
-            const result = bag.fillFrom({ a: 1 });
+            const result = bag.replace(new Bag({ a: 1 }));
 
             assert.strictEqual(result, bag);
         });
 
         it('should be chainable with other methods', () => {
             const bag = new Bag();
-            bag.fillFrom({ a: 1 }).setItem('b', 2);
+            bag.replace(new Bag({ a: 1 })).setItem('b', 2);
 
             assert.strictEqual(bag.getItem('a'), 1);
             assert.strictEqual(bag.getItem('b'), 2);
@@ -1700,7 +1696,7 @@ describe('Bag', () => {
 
         it('should handle arrays as values (not convert to Bag)', () => {
             const bag = new Bag();
-            bag.fillFrom({ items: [1, 2, 3] });
+            bag.replace(new Bag({ items: [1, 2, 3] }));
 
             const items = bag.getItem('items');
             assert.ok(Array.isArray(items));
@@ -1712,7 +1708,7 @@ describe('Bag', () => {
             innerBag.setItem('key', 'value');
 
             const bag = new Bag();
-            bag.fillFrom({ inner: innerBag });
+            bag.replace(new Bag({ inner: innerBag }));
 
             assert.ok(bag.getItem('inner') instanceof Bag);
             assert.strictEqual(bag.getItem('inner.key'), 'value');
@@ -2285,3 +2281,10 @@ describe('Bag', () => {
         });
     });
 });
+
+function collectPaths(bag) {
+    const result = [];
+    bag.forEach((node, kw) => { result.push([kw._pathlist.join("."), node]); },
+        {deep: true, kwargs: {_pathlist: []}});
+    return result;
+}

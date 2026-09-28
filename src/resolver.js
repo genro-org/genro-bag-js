@@ -162,7 +162,7 @@ export class BagResolver {
         const merged = { ...defaults, ...kwargs };
 
         // Extract internal params
-        this._cacheTime = merged.cacheTime;
+        this.cacheTime = merged.cacheTime;
         this._readOnly = merged.readOnly;
         this._asBag = merged.asBag;
         this._retryPolicy = merged.retryPolicy;
@@ -200,6 +200,9 @@ export class BagResolver {
      * @param {BagNode} node - The node this resolver is attached to.
      */
     setNode(node) {
+        if (node !== this._node && !this.readOnly && this._lastUpdate !== null) {
+            this.reset();
+        }
         this._node = node;
         this.onSetResolver(node);
     }
@@ -238,6 +241,9 @@ export class BagResolver {
      * @param {number} value
      */
     set cacheTime(value) {
+        if (typeof value === 'boolean') {
+            throw new TypeError('cacheTime must be numeric; use a negative value for infinite caching');
+        }
         this._cacheTime = value;
     }
 
@@ -282,12 +288,12 @@ export class BagResolver {
     }
 
     /**
-     * Get cached value from parent node or local storage.
+     * Readonly caches live in the resolver; writable caches use the attached node.
      *
      * @returns {*} The cached value.
      */
     get cachedValue() {
-        return this._node ? this._node._value : this._cachedValue;
+        return !this.readOnly && this._node ? this._node._value : this._cachedValue;
     }
 
     /**
@@ -296,7 +302,7 @@ export class BagResolver {
      * @param {*} value
      */
     set cachedValue(value) {
-        if (this._node) {
+        if (!this.readOnly && this._node) {
             this._node.setValue(value, false);
         } else {
             this._cachedValue = value;
@@ -327,7 +333,7 @@ export class BagResolver {
 
         // Static mode: return cached value without resolving
         if (isStatic) {
-            return this.cachedValue;
+            return this._node ? this._node._value : this.cachedValue;
         }
 
         // Build kwargs: resolver._kw merged with call kwargs
@@ -346,8 +352,7 @@ export class BagResolver {
         // Fingerprint-based cache invalidation:
         // If params changed, force reload even if TTL hasn't expired
         const currentFingerprint = this._computeEffectiveFingerprint(kwargs);
-        if (!this._readOnly
-            && currentFingerprint === this._lastEffectiveFingerprint
+        if (currentFingerprint === this._lastEffectiveFingerprint
             && !this.expired) {
             return this.cachedValue;
         }
@@ -399,8 +404,8 @@ export class BagResolver {
 
         this._lastUpdate = Date.now();
 
-        // Store via cachedValue (uses node if attached, local storage otherwise)
-        if (!this._readOnly) {
+        // Cache duration and node storage policy are independent.
+        if (!this.readOnly || this.cacheTime !== 0) {
             this.cachedValue = value;
         }
 

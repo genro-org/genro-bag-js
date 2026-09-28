@@ -22,8 +22,10 @@ export class BagNode {
      * @param {BagResolver} [resolver=null] - Resolver for lazy value loading.
      * @param {string} [nodeTag=null] - Semantic type tag for the node.
      * @param {string} [xmlTag=null] - Original XML tag name (for serialization).
+     * @param {boolean} [removeNullAttributes=true] - Remove null attributes during construction.
      */
-    constructor(parentBag, label, value = null, attr = null, resolver = null, nodeTag = null, xmlTag = null) {
+    constructor(parentBag, label, value = null, attr = null, resolver = null, nodeTag = null, xmlTag = null,
+        removeNullAttributes = true) {
         this.label = label;
         this._value = null;
         this._attr = {};
@@ -33,7 +35,6 @@ export class BagNode {
         this._onChangedValue = null;
         this.nodeTag = nodeTag;
         this.xmlTag = xmlTag;
-        this._invalidReasons = [];
         this._compiled = null;
 
         // Set parent
@@ -41,7 +42,7 @@ export class BagNode {
 
         // Process attributes - trigger=false during construction
         if (attr) {
-            this.setAttr(attr, false);
+            this.setAttr(attr, false, true, removeNullAttributes);
         }
 
         // Process value - trigger=false during construction
@@ -211,6 +212,44 @@ export class BagNode {
         }
     }
 
+    /** Copy value, attributes and resolver; retain label, identity and position. */
+    replace(other) {
+        if (!(other instanceof BagNode)) throw new TypeError('BagNode.replace expects a BagNode');
+        if (other === this) return this;
+        let value = other.staticValue;
+        if (value && typeof value._htraverse === 'function') {
+            value = value.createChildBag().replace(value);
+        }
+        // Copy resolver state without executing it or rebinding the source.
+        let resolver = null;
+        if (other.resolver) {
+            resolver = Object.create(Object.getPrototypeOf(other.resolver),
+                Object.getOwnPropertyDescriptors(other.resolver));
+            resolver._node = null;
+            resolver._kw = { ...other.resolver._kw };
+        }
+        const oldvalue = this._value;
+        const oldattr = { ...this._attr };
+        const oldresolver = this.resolver;
+        if (oldresolver && oldresolver._node === this) oldresolver._node = null;
+        this.resolver = resolver;
+        this.setValue(value, false, { ...other.attr }, false, false, null);
+        const diff = this._buildAttrDiff(oldattr, this._attr);
+        const attrsDiff = Object.keys(diff).length ? diff : null;
+        const valueChanged = oldvalue !== value || oldresolver !== resolver;
+        if (valueChanged || attrsDiff) {
+            const evt = attrsDiff ? (valueChanged ? 'upd_value_attr' : 'upd_attrs') : 'upd_value';
+            const info = attrsDiff ? {oldvalue, attrs_diff: attrsDiff} : {oldvalue};
+            for (const callback of Object.values(this._nodeSubscribers)) {
+                callback({node: this, info, evt});
+            }
+            if (this._parentBag !== null && this._parentBag.backref) {
+                this._parentBag._onNodeChanged(this, [this.label], evt, oldvalue, attrsDiff);
+            }
+        }
+        return this;
+    }
+
     /**
      * Get node's raw _value (bypassing resolver).
      */
@@ -247,9 +286,10 @@ export class BagNode {
      * Reset the resolver and clear the node value.
      */
     resetResolver() {
-        if (this._resolver) {
-            this._resolver.reset();
+        if (!this._resolver) {
+            throw new Error('Cannot reset resolver: node has no resolver');
         }
+        this._resolver.reset();
         this.setValue(null);
     }
 
@@ -430,17 +470,8 @@ export class BagNode {
     }
 
     // -------------------------------------------------------------------------
-    // Validation and Compilation Properties
+    // Compilation Properties
     // -------------------------------------------------------------------------
-
-    /**
-     * Check if node is valid (no invalid reasons registered).
-     *
-     * @returns {boolean} True if _invalidReasons is empty.
-     */
-    get isValid() {
-        return this._invalidReasons.length === 0;
-    }
 
     /**
      * Lazy-initialized compiled data storage.
@@ -490,9 +521,7 @@ export class BagNode {
     get fullpath() {
         if (this._parentBag !== null) {
             const parentFullpath = this._parentBag.fullpath;
-            if (parentFullpath !== null) {
-                return `${parentFullpath}.${this.label}`;
-            }
+            return parentFullpath ? `${parentFullpath}.${this.label}` : this.label;
         }
         return null;
     }
@@ -574,7 +603,12 @@ export class BagNode {
         if (this._resolver !== null) {
             return this._resolver === other._resolver;
         }
-        // Compare values
+        // Prefer content equality for nested Bags, including framework subclasses
+        // whose compatibility isEqual method deliberately compares identity.
+        if (this._value && typeof this._value.equalTo === 'function') {
+            return this._value.equalTo(other._value);
+        }
+        // Preserve existing comparison hooks for other value types.
         if (this._value && typeof this._value.isEqual === 'function') {
             return this._value.isEqual(other._value);
         }
