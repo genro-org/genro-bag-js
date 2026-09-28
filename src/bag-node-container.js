@@ -188,6 +188,7 @@ export class BagNodeContainer {
      * @param {string} [reason=null] - Optional reason string for events.
      * @param {boolean} [doTrigger=true] - If false, suppress events.
      * @param {boolean} [fired=false] - If true, reset value to null after creation.
+     *   The event of the write carries fired=true; the reset emits no event.
      * @param {string} [nodeTag=null] - Semantic type tag for the node.
      * @returns {BagNode} The created or updated BagNode.
      */
@@ -244,7 +245,7 @@ export class BagNodeContainer {
                 node.setAttr(attr, doTrigger, true, removeNullAttributes);
             } else {
                 // Update value with all propagated params
-                node.setValue(value, doTrigger, attr, updattr, removeNullAttributes, reason);
+                node.setValue(value, doTrigger, attr, updattr, removeNullAttributes, reason, fired);
             }
         } else {
             // New node — use parentBag.nodeClass if available
@@ -259,7 +260,7 @@ export class BagNodeContainer {
             // reason is the 4th argument (3rd is pathlist) — passing it in the
             // wrong slot would corrupt the subscriber's pathlist.
             if (doTrigger && parentBag && parentBag.backref) {
-                parentBag._onNodeInserted(node, idx, null, reason);
+                parentBag._onNodeInserted(node, idx, null, reason, fired);
             }
         }
 
