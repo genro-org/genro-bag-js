@@ -145,8 +145,11 @@ export class BagNode {
      *   matching Python's _updattr=None.
      * @param {boolean} [removeNullAttributes=true] - If true, remove null values from attributes.
      * @param {string} [reason=null] - Optional reason string for the trigger.
+     * @param {boolean} [fired=false] - True when the write is a fired write;
+     *   carried as `fired` in the Bag change event.
      */
-    setValue(value, trigger = true, attributes = null, updattr = null, removeNullAttributes = true, reason = null) {
+    setValue(value, trigger = true, attributes = null, updattr = null, removeNullAttributes = true, reason = null,
+             fired = false) {
         // Handle BagResolver passed as value
         if (value instanceof BagResolver) {
             this.resolver = value;
@@ -206,7 +209,7 @@ export class BagNode {
             }
             if (trigger) {
                 this._parentBag._onNodeChanged(
-                    this, [this.label], evt, oldvalue, attrsDiff, reason
+                    this, [this.label], evt, oldvalue, attrsDiff, reason, fired
                 );
             }
         }

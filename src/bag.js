@@ -600,10 +600,12 @@ export class Bag {
      * @param {Object|null} [attrsDiff=null] - Attribute diff dict { name: { old, new } }
      *   (for attribute changes).
      * @param {string|null} [reason=null] - Reason for change.
+     * @param {boolean} [fired=false] - True when the change is a fired write.
      */
-    _onNodeChanged(node, pathlist, evt, oldvalue = null, attrsDiff = null, reason = null) {
+    _onNodeChanged(node, pathlist, evt, oldvalue = null, attrsDiff = null, reason = null,
+                   fired = false) {
         for (const s of Object.values(this._updSubscribers)) {
-            s({ node, pathlist, oldvalue, attrs_diff: attrsDiff, evt, reason });
+            s({ node, pathlist, oldvalue, attrs_diff: attrsDiff, evt, reason, fired });
         }
         if (this._parent && this._parentNode) {
             this._parent._onNodeChanged(
@@ -612,7 +614,8 @@ export class Bag {
                 evt,
                 oldvalue,
                 attrsDiff,
-                reason
+                reason,
+                fired
             );
         }
     }
@@ -624,8 +627,9 @@ export class Bag {
      * @param {number} ind - Index where inserted.
      * @param {string[]|null} [pathlist=null] - Path to the node.
      * @param {string|null} [reason=null] - Reason for insertion.
+     * @param {boolean} [fired=false] - True when the insertion is a fired write.
      */
-    _onNodeInserted(node, ind, pathlist = null, reason = null) {
+    _onNodeInserted(node, ind, pathlist = null, reason = null, fired = false) {
         const parent = node.parentBag;
         const value = node.getValue(true);
         if (parent !== null && parent.backref && value instanceof Bag) {
@@ -636,14 +640,15 @@ export class Bag {
             pathlist = [];
         }
         for (const s of Object.values(this._insSubscribers)) {
-            s({ node, pathlist, ind, evt: 'ins', reason });
+            s({ node, pathlist, ind, evt: 'ins', reason, fired });
         }
         if (this._parent && this._parentNode) {
             this._parent._onNodeInserted(
                 node,
                 ind,
                 [this._parentNode.label, ...pathlist],
-                reason
+                reason,
+                fired
             );
         }
     }

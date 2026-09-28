@@ -49,7 +49,7 @@ genro-bag-js brings the Python genro-bag architecture to JavaScript/TypeScript f
 
 ```bash
 # Install the tagged JavaScript release
-npm install git+https://github.com/genropy/genro-bag-js.git#v0.9.0
+npm install git+https://github.com/genropy/genro-bag-js.git#v0.10.0
 ```
 
 ## Usage
