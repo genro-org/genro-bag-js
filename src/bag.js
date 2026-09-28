@@ -2,10 +2,11 @@
 
 import { BagNodeContainer } from './bag-node-container.js';
 import { BagNode } from './bag-node.js';
-import { toTytx as tytxEncode, fromTytx as tytxDecode, registerClass, getRegisteredType } from 'genro-tytx';
+import { toTytx as tytxEncode, fromTytx as tytxDecode, registerClass, getRegisteredType, getSubtypeDict, setSubtypeDict } from 'genro-tytx';
 import { DOMParser as XmlDOMParser } from '@xmldom/xmldom';
 import { BagCbResolver, BagResolver } from './resolver.js';
 import { BagSerializationError, encodeResolver, decodeResolver, encodeAttrs, decodeAttrs } from './resolver-wire.js';
+import { CLS_ATTRIBUTE, getClsMarker, getInheritedClass, getSubtypeClass } from './subtype-wire.js';
 
 // Resolver caches are not structural branches on the wire: the descriptor
 // owns that node, and serializing cached descendants would orphan them.
@@ -1763,6 +1764,9 @@ export class Bag {
         const compact = pathRegistry !== null;
         const pathToCode = compact ? Object.create(null) : null;
         let codeCounter = 0;
+        // Class of each branch by path: a node's parent class decides whether
+        // its branch needs __cls (parentBag is null when the backref is off).
+        const pathToClass = new Map([['', this.constructor]]);
 
         for (const [path, node] of serializationNodes(this)) {
             const lastDot = path.lastIndexOf('.');
@@ -1772,15 +1776,14 @@ export class Bag {
 
             // Value encoding
             let value;
+            let branchCls = null;
             if (node.resolver) {
                 value = encodeResolver(node.resolver);
             } else if (nodeValue instanceof Bag) {
                 const cls = nodeValue.constructor;
                 const suffix = cls.tytxSuffix;
-                const registered = getRegisteredType(suffix);
-                if (registered !== cls && !(suffix === 'X' && registered === Bag)) {
-                    throw new BagSerializationError(`Unregistered Bag branch type: ${cls.name}`);
-                }
+                pathToClass.set(path, cls);
+                branchCls = getClsMarker(cls, getInheritedClass(pathToClass.get(parentPath), suffix));
                 value = `::${suffix}`;
             } else if (nodeValue === null) {
                 value = '::NN';
@@ -1788,7 +1791,12 @@ export class Bag {
                 value = nodeValue;
             }
 
+            if (node.attr && Object.hasOwn(node.attr, CLS_ATTRIBUTE)) {
+                throw new BagSerializationError(
+                    `node '${path}': the attribute '${CLS_ATTRIBUTE}' is reserved for the Bag class name`);
+            }
             const attr = encodeAttrs(node.attr);
+            if (branchCls !== null) attr[CLS_ATTRIBUTE] = branchCls;
             const tag = node.nodeTag;
 
             if (compact) {
@@ -1828,6 +1836,9 @@ export class Bag {
             const rows = [...this._nodeFlattener(null)];
             data = { rows };
         }
+        const rootClass = this.constructor;
+        const rootCls = getClsMarker(rootClass, getInheritedClass(null, rootClass.tytxSuffix));
+        if (rootCls !== null) data[CLS_ATTRIBUTE] = rootCls;
 
         const tytxTransport = transport === 'json' ? null : transport;
         return tytxEncode(data, tytxTransport);
@@ -1841,15 +1852,21 @@ export class Bag {
      * @returns {Bag} Reconstructed Bag.
      */
     static fromTytx(data, transport = 'json') {
+        // The payload alone decides the class of the root: without __cls it is
+        // the class registered for the suffix (Bag for "X"), whatever this is.
+        const suffix = this.tytxSuffix;
         // The registry passes an empty payload for a structural branch marker.
-        if (data === '') return new this();
+        if (data === '') return new (getInheritedClass(null, suffix))();
         const parsed = tytxDecode(data, transport === 'json' ? null : transport);
         if (!parsed || !Array.isArray(parsed.rows)) {
             throw new BagSerializationError('Invalid TYTX Bag: expected rows');
         }
         const paths = parsed.paths;
         const compact = paths != null;
-        const bag = new this();
+        const rootClass = Object.hasOwn(parsed, CLS_ATTRIBUTE)
+            ? getSubtypeClass(suffix, parsed[CLS_ATTRIBUTE])
+            : getInheritedClass(null, suffix);
+        const bag = new rootClass();
         const pathToBag = new Map([['', bag]]);
 
         for (const row of parsed.rows) {
@@ -1877,15 +1894,24 @@ export class Bag {
                 if (cls === Bag || cls?.prototype instanceof Bag) value = tytxDecode(value);
             }
             const resolver = decodeResolver(value);
+            const attr = decodeAttrs(rawAttr);
+            const branchCls = Object.hasOwn(attr, CLS_ATTRIBUTE) ? attr[CLS_ATTRIBUTE] : null;
+            delete attr[CLS_ATTRIBUTE];
             if (value instanceof Bag) {
-                let cls = value.constructor;
-                if (cls.tytxSuffix === 'X' && this.tytxSuffix === 'X') cls = this;
+                // The class is the __cls name, or the one inherited from the parent.
+                const branchSuffix = value.constructor.tytxSuffix;
+                const cls = branchCls !== null
+                    ? getSubtypeClass(branchSuffix, branchCls)
+                    : getInheritedClass(parentBag.constructor, branchSuffix);
                 value = new cls();
                 pathToBag.set(fullPath, value);
+            } else if (branchCls !== null) {
+                throw new BagSerializationError(
+                    `node '${fullPath}': the attribute '${CLS_ATTRIBUTE}' is reserved for the Bag class name of a branch`);
             } else if (value === '::NN') {
                 value = null;
             }
-            const node = parentBag.setItem(label, resolver || value, decodeAttrs(rawAttr));
+            const node = parentBag.setItem(label, resolver || value, attr);
             node.nodeTag = tag ?? null;
         }
         return bag;
@@ -2461,3 +2487,6 @@ BagResolver.registerBagClass(Bag);
 
 // Shared TYTX registry: subclasses register their own wire suffix explicitly.
 registerClass(Bag);
+// Bag is the base class of the "X" type: its name must be in the subtype
+// dictionary like every subclass that travels as "::X" with a __cls name.
+setSubtypeDict(Bag.tytxSuffix, { ...getSubtypeDict(Bag.tytxSuffix), Bag });
