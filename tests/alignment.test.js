@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Bag, BagCbResolver, BagResolver, BagSerializationError, OpaqueResolver,
     StorageResolver, registerResolver } from '../src/index.js';
-import { registerClass, registerType, toTytx, fromTytx } from 'genro-tytx';
+import { registerClass, registerType, toTytx, fromTytx } from '@genrojs/tytx';
 
 class SourceBag extends Bag { static tytxSuffix = 'SOURCE'; }
 registerClass(SourceBag);

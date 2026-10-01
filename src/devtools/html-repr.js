@@ -1,5 +1,5 @@
 // Copyright 2026 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
-import { toTytx } from 'genro-tytx';
+import { toTytx } from '@genrojs/tytx';
 
 const TYPE_NAMES = {T:'Text',L:'Integer',R:'Float',N:'Decimal',B:'Boolean',D:'Date',H:'Time',HZ:'Time with timezone',DH:'Datetime',DHZ:'Datetime with timezone',NN:'Null',RAW:'Bytes',JS:'JSON',X:'Bag'};
 

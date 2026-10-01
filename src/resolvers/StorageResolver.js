@@ -1,7 +1,7 @@
 // Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
 
 import { BagResolver } from '../resolver.js';
-import { fromTytx } from 'genro-tytx';
+import { fromTytx } from '@genrojs/tytx';
 
 /**
  * StorageResolver - resolver that reads from browser Web Storage.

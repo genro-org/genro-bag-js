@@ -1,7 +1,7 @@
 // Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
 
 import { BagNode } from './bag-node.js';
-import { fromTytx } from 'genro-tytx';
+import { fromTytx } from '@genrojs/tytx';
 
 /**
  * BagNodeContainer - Ordered container for BagNodes with positional insert.

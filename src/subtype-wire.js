@@ -1,6 +1,6 @@
 // Copyright 2026 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
 
-import { getRegisteredType, getSubtypeDict } from 'genro-tytx';
+import { getRegisteredType, getSubtypeDict } from '@genrojs/tytx';
 import { BagSerializationError } from './resolver-wire.js';
 
 /**

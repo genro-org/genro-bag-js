@@ -47,15 +47,22 @@ genro-bag-js brings the Python genro-bag architecture to JavaScript/TypeScript f
 
 ## Installation
 
+The same package is published on two registries:
+
 ```bash
-# Install the tagged JavaScript release
-npm install git+https://github.com/genropy/genro-bag-js.git#v0.10.0
+# npm
+npm install @genrojs/bag
+
+# JSR
+npx jsr add @genro/bag
 ```
+
+From npm, import from `@genrojs/bag`; from JSR, import from `@genro/bag`.
 
 ## Usage
 
 ```typescript
-import { Bag } from 'genro-bag-js';
+import { Bag } from '@genrojs/bag';
 
 // Create a Bag
 const bag = new Bag();
@@ -73,7 +80,7 @@ const restored = Bag.fromXml(xml);
 ### With Builder
 
 ```typescript
-import { Bag, BagBuilderBase, element } from 'genro-bag-js';
+import { Bag, BagBuilderBase, element } from '@genrojs/bag';
 
 class GUIBuilder extends BagBuilderBase {
   @element({ subTags: 'button,textfield' })
@@ -92,7 +99,7 @@ panel.button('Cancel', 'doCancel');
 ### With Compiler
 
 ```typescript
-import { BagCompilerBase, compiler } from 'genro-bag-js';
+import { BagCompilerBase, compiler } from '@genrojs/bag';
 
 class DOMCompiler extends BagCompilerBase {
   @compiler
@@ -163,9 +170,9 @@ The experimental inspector is a separate entry point, excluded from the main
 module and browser bundle. It may be removed in a future release.
 
 ```js
-import { htmlRepr } from 'genro-bag-js/devtools';
+import { htmlRepr } from '@genrojs/bag/devtools';
 // With a bundler that supports CSS imports:
-import 'genro-bag-js/devtools/html-repr.css';
+import '@genrojs/bag/devtools/html-repr.css';
 
 const html = htmlRepr(bag, {title: 'Inspect Bag', showTypes: true});
 ```

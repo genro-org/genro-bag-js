@@ -16,8 +16,8 @@ remains synchronous on both runtimes.
 ## Registered Bag classes
 
 ```js
-import { Bag } from 'genro-bag-js';
-import { registerClass } from 'genro-tytx';
+import { Bag } from '@genrojs/bag';
+import { registerClass } from '@genrojs/tytx';
 
 class SourceBag extends Bag {
     static tytxSuffix = 'SOURCE';
@@ -64,7 +64,7 @@ runtime differences. The module and name identify a wire type; they never
 cause dynamic imports or code evaluation.
 
 ```js
-import { BagResolver, registerResolver } from 'genro-bag-js';
+import { BagResolver, registerResolver } from '@genrojs/bag';
 
 class NumberResolver extends BagResolver {
     load(options) { return options.number; }
