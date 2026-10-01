@@ -3,11 +3,11 @@
 /**
  * UrlResolver - resolver that loads content from an HTTP URL.
  *
- * Uses fetchTytx from genro-tytx for typed serialization/deserialization.
+ * Uses fetchTytx from @genrojs/tytx for typed serialization/deserialization.
  * Faithful port of Python genro_bag.resolvers.url_resolver.UrlResolver.
  */
 
-import { fetchTytx } from 'genro-tytx';
+import { fetchTytx } from '@genrojs/tytx';
 import { BagResolver } from '../resolver.js';
 
 /**

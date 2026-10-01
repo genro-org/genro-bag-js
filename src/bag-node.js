@@ -1,6 +1,6 @@
 // Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
 
-import { fromTytx } from 'genro-tytx';
+import { fromTytx } from '@genrojs/tytx';
 import { BagResolver } from './resolver.js';
 
 /**

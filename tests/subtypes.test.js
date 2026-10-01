@@ -7,7 +7,7 @@
 import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { Bag, BagNode, BagSerializationError } from '../src/index.js';
-import { toTytx, fromTytx, getSubtypeDict, setSubtypeDict } from 'genro-tytx';
+import { toTytx, fromTytx, getSubtypeDict, setSubtypeDict } from '@genrojs/tytx';
 
 class SourceNode extends BagNode {}
 class Source extends Bag { get nodeClass() { return SourceNode; } }

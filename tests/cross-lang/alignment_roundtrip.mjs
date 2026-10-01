@@ -2,7 +2,7 @@
 // Contract bridge: preserve Python types and resolver descriptions through JS.
 import assert from 'node:assert/strict';
 import { Bag, BagResolver, OpaqueResolver, registerResolver } from '../../src/index.js';
-import { registerClass } from 'genro-tytx';
+import { registerClass } from '@genrojs/tytx';
 class SourceBag extends Bag { static tytxSuffix = 'AUDITSOURCE'; }
 registerClass(SourceBag);
 class FixedResolver extends BagResolver { load(kw) { return kw.number; } }

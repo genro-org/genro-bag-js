@@ -2,7 +2,7 @@
 
 import { BagNodeContainer } from './bag-node-container.js';
 import { BagNode } from './bag-node.js';
-import { toTytx as tytxEncode, fromTytx as tytxDecode, registerClass, getRegisteredType, getSubtypeDict, setSubtypeDict } from 'genro-tytx';
+import { toTytx as tytxEncode, fromTytx as tytxDecode, registerClass, getRegisteredType, getSubtypeDict, setSubtypeDict } from '@genrojs/tytx';
 import { DOMParser as XmlDOMParser } from '@xmldom/xmldom';
 import { BagCbResolver, BagResolver } from './resolver.js';
 import { BagSerializationError, encodeResolver, decodeResolver, encodeAttrs, decodeAttrs } from './resolver-wire.js';

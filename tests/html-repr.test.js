@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Bag, BagCbResolver } from '../src/index.js';
-import { createDecimal } from 'genro-tytx';
-import { htmlRepr } from 'genro-bag-js/devtools';
+import { createDecimal } from '@genrojs/tytx';
+import { htmlRepr } from '@genrojs/bag/devtools';
 
 test('escapes labels, scalar values, attributes, tags and class option', () => {
   const bag = new Bag();

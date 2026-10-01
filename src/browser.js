@@ -1,4 +1,4 @@
-import * as TYTX from 'genro-tytx';
+import * as TYTX from '@genrojs/tytx';
 
 TYTX.setDecimalLibrary('number');
 
