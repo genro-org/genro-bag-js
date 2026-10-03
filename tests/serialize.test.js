@@ -29,6 +29,20 @@ describe('XML Serialization', () => {
             assert.ok(xml.includes('<count>42</count>'));
         });
 
+        it('should serialize temporal values as ISO 8601 XML text', () => {
+            const bag = new Bag();
+            bag.setItem('date', new Date('1990-05-02T00:00:00.000Z'));
+            bag.setItem('datetime', new Date('2026-10-03T09:30:00.000Z'));
+            bag.setItem('time', new Date('1970-01-01T10:30:00.000Z'));
+            bag.setItem('fractional', new Date('2026-10-03T09:30:00.123Z'));
+
+            assert.equal(bag.toXml(),
+                '<date>1990-05-02</date>' +
+                '<datetime>2026-10-03T09:30:00Z</datetime>' +
+                '<time>10:30:00Z</time>' +
+                '<fractional>2026-10-03T09:30:00.123Z</fractional>');
+        });
+
         it('should serialize nested Bags', () => {
             const bag = new Bag();
             bag.setItem('config.db.host', 'localhost');
