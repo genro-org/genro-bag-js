@@ -19,6 +19,22 @@ function* serializationNodes(bag, prefix = '') {
     }
 }
 
+function xmlDateText(value) {
+    const iso = value.toISOString();
+    const isEpochDate = value.getUTCFullYear() === 1970 &&
+        value.getUTCMonth() === 0 && value.getUTCDate() === 1;
+    const isMidnight = value.getUTCHours() === 0 &&
+        value.getUTCMinutes() === 0 && value.getUTCSeconds() === 0 &&
+        value.getUTCMilliseconds() === 0;
+
+    // Date is also used for date-only and time-only values. Keep their XML
+    // lexical forms distinct while using UTC for every representation.
+    if (isMidnight && !isEpochDate) return iso.slice(0, iso.indexOf('T'));
+    const timestamp = iso.replace(/\.000Z$/, 'Z');
+    if (isEpochDate && !isMidnight) return timestamp.slice(timestamp.indexOf('T') + 1);
+    return timestamp;
+}
+
 /**
  * Bag - Hierarchical data container with path-based access.
  *
@@ -1930,6 +1946,7 @@ export class Bag {
      * Serialize Bag to XML format.
      *
      * All values are converted to strings without type information.
+     * Date values use ISO 8601 text in UTC (date, time, or datetime).
      * For type-preserving serialization, use toTytx() instead.
      *
      * @param {Object} [options={}] - Serialization options.
@@ -2024,7 +2041,10 @@ export class Bag {
             return `<${tag}${attrsStr}></${tag}>`;
         }
 
-        const text = this._escapeXml(String(value));
+        const scalar = value instanceof Date && !Number.isNaN(value.getTime())
+            ? xmlDateText(value)
+            : String(value);
+        const text = this._escapeXml(scalar);
         return `<${tag}${attrsStr}>${text}</${tag}>`;
     }
 
