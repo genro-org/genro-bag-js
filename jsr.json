@@ -1,6 +1,6 @@
 {
   "name": "@genro/bag",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "license": "Apache-2.0",
   "exports": "./src/index.js",
   "publish": {
