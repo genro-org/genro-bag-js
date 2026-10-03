@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.2 — 2026-10-03
+
+### Fixed
+
+- `toXml()` writes `Date` values as ISO 8601 text in UTC instead of
+  `Date.toString()`, which depended on the local time zone
+  ([#10](https://github.com/genro-org/genro-bag-js/issues/10)). A value at UTC
+  midnight is written as a date (`1990-05-02`), a value on 1970-01-01 as a time
+  (`09:30:00Z`), any other value as a datetime (`2026-10-03T09:30:00Z`).
+
 ## 0.10.1 — 2026-10-01
 
 ### Changed
