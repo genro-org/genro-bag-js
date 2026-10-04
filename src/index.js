@@ -1,3 +1,4 @@
+/* @ts-self-types="./index.d.ts" */
 // Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
 
 export { Bag, BagException } from './bag.js';
