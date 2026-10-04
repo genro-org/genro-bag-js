@@ -4,8 +4,12 @@
   "description": "JavaScript port of genro-bag - hierarchical data container",
   "type": "module",
   "main": "./src/index.js",
+  "types": "./src/index.d.ts",
   "exports": {
-    ".": "./src/index.js",
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
     "./devtools": "./src/devtools/index.js",
     "./devtools/html-repr.css": "./src/devtools/html-repr.css"
   },
