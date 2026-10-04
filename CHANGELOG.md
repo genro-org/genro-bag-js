@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.3 — 2026-10-04
+
+### Added
+
+- Hand-written type declarations in `src/index.d.ts`, referenced from
+  `src/index.js` with `@ts-self-types` and published to JSR and npm
+  (`types` in `package.json`). No runtime change.
+
 ## 0.10.2 — 2026-10-03
 
 ### Fixed
