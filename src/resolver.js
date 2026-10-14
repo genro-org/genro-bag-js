@@ -11,6 +11,8 @@
  *   - cacheTime = 0: never cache, always resolve
  *   - cacheTime < 0: cache forever (resolve once)
  *
+ * Resolvers never schedule background loads. reset() reloads on the next read.
+ *
  * Retry Policy:
  *   - retryPolicy = null -> NO retry (default)
  *   - retryPolicy = 'network' -> use predefined RETRY_POLICIES.network
@@ -160,6 +162,11 @@ export class BagResolver {
     constructor(kwargs = {}) {
         const defaults = this.constructor.classKwargs;
         const merged = { ...defaults, ...kwargs };
+        for (const option of ['interval', 'reactive']) {
+            if (Object.hasOwn(merged, option)) {
+                throw new TypeError(`Removed resolver option: ${option}. Schedule updates in the application; use reset() and read explicitly.`);
+            }
+        }
 
         // Extract internal params
         this.cacheTime = merged.cacheTime;
@@ -282,7 +289,10 @@ export class BagResolver {
     /**
      * Reset the cache, forcing next resolve to call load().
      */
-    reset() {
+    reset(...args) {
+        if (args.length) {
+            throw new TypeError('reset() takes no arguments. It invalidates the cache for the next explicit read.');
+        }
         this._lastUpdate = null;
         this._lastEffectiveFingerprint = null;
     }
@@ -342,7 +352,7 @@ export class BagResolver {
         if (this._node && this._node.attr) {
             const internalParams = this.constructor.internalParams;
             for (const [key, value] of Object.entries(this._node.attr)) {
-                if (!internalParams.has(key) && !(key in kwargs)) {
+                if (!internalParams.has(key)) {
                     kwargs[key] = value;
                 }
             }
@@ -435,8 +445,8 @@ export class BagResolver {
             if (result.startsWith('<') && BagClass.fromXml) {
                 return BagClass.fromXml(result);
             }
-            if ((result.startsWith('{') || result.startsWith('[')) && BagClass.fromJson) {
-                return BagClass.fromJson(result);
+            if ((result.startsWith('{') || result.startsWith('[')) && BagClass.fromTytx) {
+                return BagClass.fromTytx(result);
             }
         }
         return result;

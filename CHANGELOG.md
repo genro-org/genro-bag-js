@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.11.0 — 2026-10-14
+
+- Align passive resolver behavior with Python: reject removed scheduling options, keep reset lazy, and let node attributes override resolver defaults. See the migration note.
+
+- Constructor and `fillFrom` accept only dictionaries, arrays and null; default
+  recursive conversion preserves typed leaves and rejects container cycles.
+- Literal string labels and per-list padded `r_` labels replace path inference
+  and older numbering. Preparation errors leave existing data unchanged.
+- `fromTytx` handles ordinary JSON, generic typed data and explicitly marked Bags.
+  `toTytx` marks Bag roots; `fromJson` is a deprecated alias, without node heuristics.
+- MessagePack carries the registered Bag type; row parent paths are label arrays.
+- Date/Decimal ingestion and Python/JS round trips have regression coverage.
+
+Read [migration-ingestion.md](docs/migration-ingestion.md) for downstream actions.
+
+
 ## 0.10.3 — 2026-10-04
 
 ### Added

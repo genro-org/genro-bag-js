@@ -20,7 +20,11 @@ export const RETRY_POLICIES: {
 
 /** Options shared by every resolver. */
 export interface BagResolverOptions {
-    /** Cache duration in ms. 0 disables the cache, a negative value never expires. */
+    /** Removed: schedule polling in the application. */
+    interval?: never;
+    /** Removed: invalidate and read explicitly. */
+    reactive?: never;
+    /** Cache duration in seconds. 0 disables the cache, a negative value never expires. */
     cacheTime?: number;
     /** If true, the resolved value is not stored in the node. */
     readOnly?: boolean;
@@ -85,7 +89,8 @@ export class BagSerializationError extends Error {
 export class Bag implements Iterable<BagNode> {
     /** Wire suffix of the base class in the TYTX registry. */
     static tytxSuffix: string;
-    constructor(source?: Record<string, any> | Bag | null);
+    constructor(source?: Record<string, any> | any[] | null, options?: { recursive?: boolean });
+    fillFrom(source?: Record<string, any> | any[] | null, options?: { recursive?: boolean }): this;
 
     parent: Bag | null;
     parentNode: BagNode | null;
@@ -158,12 +163,13 @@ export class Bag implements Iterable<BagNode> {
     traverse(): Generator<BagNode>;
 
     toTytx(transport?: 'json' | 'msgpack', compact?: boolean): string | Uint8Array;
-    static fromTytx(data: string | Uint8Array, transport?: 'json' | 'msgpack'): Bag;
+    static fromTytx(data: string | Uint8Array, transport?: 'json' | 'msgpack' | { recursive?: boolean }, options?: { recursive?: boolean }): Bag;
     toXml(options?: ToXmlOptions): string;
     static fromXml(source: string, options?: FromXmlOptions): Bag;
     static fromUrl(url: string, options?: FromUrlOptions): Promise<Bag>;
     toJson(typed?: boolean): string;
-    static fromJson(source: string | Record<string, any> | any[], listJoiner?: string | null): Bag;
+    /** @deprecated Use fromTytx for text and the constructor for native data. */
+    static fromJson(source: string | Uint8Array, options?: { recursive?: boolean }): Bag;
     toStringTree(isStatic?: boolean): string;
     toString(isStatic?: boolean): string;
 }
@@ -240,6 +246,7 @@ export class BagResolver {
     init(): void;
     setNode(node: BagNode | null): void;
     onSetResolver(node: BagNode): void;
+    /** Invalidate the cache; reload only on the next explicit read. No refresh option. */
     reset(): void;
     resolve(options?: { static?: boolean; [key: string]: any }): any;
     load(kwargs?: Record<string, any>): any;

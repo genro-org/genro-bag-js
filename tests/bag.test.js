@@ -33,7 +33,7 @@ describe('Bag', () => {
         assert.deepStrictEqual(bag.keys(), ['child', 'resolved']);
     });
 
-    it('adopts BagNode values in object construction without traversing node internals', () => {
+    it('preserves BagNode values as shared leaves without adopting their metadata', () => {
         const source = new Bag();
         const node = source.setItem('button', 'value', {tag: 'button'});
         const resolver = new BagCbResolver({callback: () => 'resolved'});
@@ -41,9 +41,10 @@ describe('Bag', () => {
 
         const wrapped = new Bag({slot: node});
 
-        assert.strictEqual(wrapped.getNode('slot').staticValue, 'value');
-        assert.strictEqual(wrapped.getNode('slot').getAttr('tag'), 'button');
-        assert.strictEqual(wrapped.getNode('slot').resolver, resolver);
+        assert.strictEqual(wrapped.getNode('slot').staticValue, node);
+        assert.deepStrictEqual(wrapped.getNode('slot').attr, {});
+        assert.strictEqual(wrapped.getNode('slot').resolver, null);
+        assert.strictEqual(node.resolver, resolver);
         assert.strictEqual(wrapped.getNode('slot._parentBag'), null);
     });
 
@@ -962,8 +963,8 @@ describe('Bag', () => {
             assert.strictEqual(rows.length, 2);
             // [parent, label, tag, value, attr]
             // Root level uses '' for parent (matches Python behavior)
-            assert.deepStrictEqual(rows[0], ['', 'a', null, 1, {}]);
-            assert.deepStrictEqual(rows[1], ['', 'b', null, 'hello', {}]);
+            assert.deepStrictEqual(rows[0], [[], 'a', null, 1, {}]);
+            assert.deepStrictEqual(rows[1], [[], 'b', null, 'hello', {}]);
         });
 
         it('should flatten nested bag with ::X marker', () => {
@@ -977,7 +978,7 @@ describe('Bag', () => {
             assert.strictEqual(rows[0][1], 'parent');
             assert.strictEqual(rows[0][3], '::X');
             // child has parent path
-            assert.strictEqual(rows[1][0], 'parent');
+            assert.deepStrictEqual(rows[1][0], ['parent']);
             assert.strictEqual(rows[1][1], 'child');
             assert.strictEqual(rows[1][3], 'value');
         });
@@ -1011,7 +1012,7 @@ describe('Bag', () => {
             const rows = [...bag._nodeFlattener(paths)];
 
             // 'a' is a Bag, should be registered
-            assert.strictEqual(paths[0], 'a');
+            assert.deepStrictEqual(paths[0], ['a']);
             // First row: 'a' has null parent (root)
             assert.strictEqual(rows[0][0], null);
             // Second and third rows have numeric parent ref
@@ -1696,7 +1697,7 @@ describe('Bag', () => {
 
         it('should handle arrays as values (not convert to Bag)', () => {
             const bag = new Bag();
-            bag.replace(new Bag({ items: [1, 2, 3] }));
+            bag.replace(new Bag({ items: [1, 2, 3] }, {recursive:false}));
 
             const items = bag.getItem('items');
             assert.ok(Array.isArray(items));
@@ -2210,16 +2211,15 @@ describe('Bag', () => {
     });
 
     // Aligned with Python genro-bag 0.11.0
-    describe('fromJson with listJoiner', () => {
+    describe('fromJson new options', () => {
         it('should join string arrays with separator', () => {
             const json = JSON.stringify({ tags: ['a', 'b', 'c'] });
-            const bag = Bag.fromJson(json, ', ');
-            assert.strictEqual(bag.getItem('tags'), 'a, b, c');
+            assert.throws(() => Bag.fromJson(json, ', '), TypeError);
         });
 
         it('should not join non-string arrays', () => {
             const json = JSON.stringify({ nums: [1, 2, 3] });
-            const bag = Bag.fromJson(json, ', ');
+            const bag = Bag.fromJson(json);
             // Non-string array → Bag with r_N keys
             assert.ok(bag.getItem('nums') instanceof Bag);
         });

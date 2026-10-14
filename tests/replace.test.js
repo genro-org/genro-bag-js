@@ -49,5 +49,5 @@ test('Bag replace preserves nested lazy resolvers and independent structural nod
     assert.equal(clone.getValue(), 4);
     copied.getItem('nested').setItem('other', 1);
     assert.equal(source.getNode('nested.other'), null);
-    assert.equal(typeof copied.fillFrom, 'undefined');
+    assert.equal(typeof copied.fillFrom, 'function');
 });
