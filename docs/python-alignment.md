@@ -154,3 +154,15 @@ Zero, false and empty strings are preserved in either mode. `Bag.setItem`
 forwards its existing null-removal option when constructing a new node as well
 as when updating one. This is an optional argument and a propagation bug fix,
 not a new default policy. See `constructor-null-attributes.test.js`.
+
+
+## Passive resolvers and application scheduling
+
+Bag does not own a scheduler in either language. Resolver `interval` and
+`reactive` options and subscription `timer` / `interval` options raise TypeError.
+`reset()` only invalidates the cache, with no refresh argument. Attachment,
+attribute changes and TTL expiry do not start background loads. Node attributes
+override resolver defaults on the next read; explicit call parameters have the
+highest priority. Applications schedule polling and publish results with
+`setItem` when observers need a mutation event. See the
+[migration note](migration-ingestion.md#no-internal-scheduling).

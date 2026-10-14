@@ -204,45 +204,20 @@ describe('JSON Serialization', () => {
         });
     });
 
-    describe('fromJson', () => {
-        it('should deserialize from JSON string', () => {
-            const json = '[{"label":"name","value":"test","attr":{}},{"label":"count","value":42,"attr":{}}]';
-            const bag = Bag.fromJson(json);
-
-            assert.equal(bag.getItem('name'), 'test');
-            assert.equal(bag.getItem('count'), 42);
+    describe('fromJson is an alias for generic serialized data', () => {
+        it('keeps label, value and attr as application fields', () => {
+            const source = '[{"label":"item","value":"test","attr":{"id":"123"}}]';
+            const bag = Bag.fromJson(source);
+            assert.equal(bag.getItem('r_00.label'), 'item');
+            assert.equal(bag.getItem('r_00.value'), 'test');
+            assert.equal(bag.getItem('r_00.attr.id'), '123');
+            assert.deepEqual(bag.getNode('r_00').attr, {});
         });
-
-        it('should deserialize nested structures', () => {
-            const json = '[{"label":"config","value":[{"label":"host","value":"localhost","attr":{}}],"attr":{}}]';
-            const bag = Bag.fromJson(json);
-
-            assert.equal(bag.getItem('config.host'), 'localhost');
-        });
-
-        it('should deserialize attributes', () => {
-            const json = '[{"label":"item","value":"test","attr":{"id":"123"}}]';
-            const bag = Bag.fromJson(json);
-
-            const node = bag.getNode('item');
-            assert.equal(node.getAttr('id'), '123');
-        });
-
-        it('should handle plain objects', () => {
-            const obj = { name: 'test', count: 42 };
-            const bag = Bag.fromJson(obj);
-
-            assert.equal(bag.getItem('name'), 'test');
-            assert.equal(bag.getItem('count'), 42);
-        });
-
-        it('should handle plain arrays', () => {
-            const arr = ['a', 'b', 'c'];
-            const bag = Bag.fromJson(arr);
-
-            assert.equal(bag.getItem('r_0'), 'a');
-            assert.equal(bag.getItem('r_1'), 'b');
-            assert.equal(bag.getItem('r_2'), 'c');
+        it('requires text; native objects and arrays belong in the constructor', () => {
+            assert.throws(() => Bag.fromJson({a:1}), TypeError);
+            assert.throws(() => Bag.fromJson([1]), TypeError);
+            assert.equal(new Bag({a:1}).getItem('a'), 1);
+            assert.equal(new Bag([1]).getItem('r_00'), 1);
         });
     });
 
@@ -253,7 +228,7 @@ describe('JSON Serialization', () => {
             original.setItem('count', 42);
             original.setItem('active', true);
 
-            const json = original.toJson();
+            const json = original.toTytx();
             const restored = Bag.fromJson(json);
 
             assert.equal(restored.getItem('name'), 'test');
@@ -267,7 +242,7 @@ describe('JSON Serialization', () => {
             original.setItem('config.db.port', 5432);
             original.setItem('config.app.name', 'myapp');
 
-            const json = original.toJson();
+            const json = original.toTytx();
             const restored = Bag.fromJson(json);
 
             assert.equal(restored.getItem('config.db.host'), 'localhost');
@@ -279,7 +254,7 @@ describe('JSON Serialization', () => {
             const original = new Bag();
             original.setItem('item', 'value', { id: '123', type: 'test' });
 
-            const json = original.toJson();
+            const json = original.toTytx();
             const restored = Bag.fromJson(json);
 
             const node = restored.getNode('item');

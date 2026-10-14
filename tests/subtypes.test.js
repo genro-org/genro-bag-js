@@ -45,7 +45,7 @@ describe('plain Bags are unchanged', () => {
 describe('root', () => {
     useSubtypes();
     test('name at payload level', () => {
-        assert.equal(fromTytx(new Source().toTytx()).__cls, 'Source');
+        assert.equal(fromTytx(new Source()._toTytxPayload()).__cls, 'Source');
     });
     for (const caller of [Bag, Source, Page]) {
         test(`payload decides the root class (caller ${caller.name})`, () => {
@@ -59,7 +59,7 @@ describe('root', () => {
     }
     for (const caller of [Bag, Source]) {
         test(`empty payload is a Bag (caller ${caller.name})`, () => {
-            assert.equal(caller.fromTytx('').constructor, Bag);
+            assert.equal(caller.fromTytx('::X').constructor, Bag);
         });
     }
     test('node class follows the Bag', () => {
@@ -100,7 +100,7 @@ describe('branches', () => {
     });
     test('name written only when the class changes', () => {
         const tree = new Source({ same: new Source(), data: new Bag({ page: new Page() }) });
-        const rows = Object.fromEntries(fromTytx(tree.toTytx()).rows.map(row => [row[1], row[4]]));
+        const rows = Object.fromEntries(fromTytx(tree._toTytxPayload()).rows.map(row => [row[1], row[4]]));
         assert.ok(!('__cls' in rows.same));
         assert.equal(rows.data.__cls, 'Bag');
         assert.equal(rows.page.__cls, 'Page');
@@ -134,11 +134,11 @@ describe('errors', () => {
     });
     test('unknown branch name', () => {
         const payload = toTytx({ rows: [['', 'a', null, '::X', { __cls: 'Missing' }]] });
-        assert.throws(() => Bag.fromTytx(payload), /Missing/);
+        assert.throws(() => Bag.fromTytx(payload + '::X'), /Missing/);
     });
     test('unknown root name', () => {
         const payload = toTytx({ rows: [], __cls: 'Missing' });
-        assert.throws(() => Bag.fromTytx(payload), /Missing/);
+        assert.throws(() => Bag.fromTytx(payload + '::X'), /Missing/);
     });
     test('user attribute is reserved on write', () => {
         const bag = new Bag();
@@ -148,6 +148,6 @@ describe('errors', () => {
     });
     test('reserved attribute on a leaf row', () => {
         const payload = toTytx({ rows: [['', 'a', null, 1, { __cls: 'Source' }]] });
-        assert.throws(() => Bag.fromTytx(payload), /reserved/);
+        assert.throws(() => Bag.fromTytx(payload + '::X'), /reserved/);
     });
 });

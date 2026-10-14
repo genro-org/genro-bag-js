@@ -2,7 +2,8 @@
 
 import { BagNodeContainer } from './bag-node-container.js';
 import { BagNode } from './bag-node.js';
-import { toTytx as tytxEncode, fromTytx as tytxDecode, registerClass, getRegisteredType, getSubtypeDict, setSubtypeDict } from '@genrojs/tytx';
+import { toTytx as tytxEncode, fromTytx as tytxDecode, registerType, getRegisteredType, getSubtypeDict, setSubtypeDict } from '@genrojs/tytx';
+import { encode as msgpackEncode, ExtData } from '@msgpack/msgpack';
 import { DOMParser as XmlDOMParser } from '@xmldom/xmldom';
 import { BagCbResolver, BagResolver } from './resolver.js';
 import { BagSerializationError, encodeResolver, decodeResolver, encodeAttrs, decodeAttrs } from './resolver-wire.js';
@@ -10,9 +11,9 @@ import { CLS_ATTRIBUTE, getClsMarker, getInheritedClass, getSubtypeClass } from 
 
 // Resolver caches are not structural branches on the wire: the descriptor
 // owns that node, and serializing cached descendants would orphan them.
-function* serializationNodes(bag, prefix = '') {
+function* serializationNodes(bag, prefix = []) {
     for (const node of bag) {
-        const path = prefix ? `${prefix}.${node.label}` : node.label;
+        const path = [...prefix, node.label];
         yield [path, node];
         const value = node.getValue(true);
         if (!node.resolver && value instanceof Bag) yield* serializationNodes(value, path);
@@ -35,6 +36,28 @@ function xmlDateText(value) {
     return timestamp;
 }
 
+function isDictionary(value) {
+    if (value === null || typeof value !== 'object') return false;
+    const proto = Object.getPrototypeOf(value);
+    return proto === Object.prototype || proto === null;
+}
+
+function wireValue(value) {
+    if (typeof value === 'string') return value.includes('::') ? `${value}::T` : value;
+    if (Array.isArray(value)) return value.map(wireValue);
+    if (isDictionary(value)) return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, wireValue(v)]));
+    return value;
+}
+
+function ingestionOptions(options) {
+    if (!isDictionary(options)) throw new TypeError('Bag options must be an object');
+    const { recursive = true } = options;
+    if (typeof recursive !== 'boolean') throw new TypeError('recursive must be a boolean');
+    return recursive;
+}
+
+let warnedFromJson = false;
+
 /**
  * Bag - Hierarchical data container with path-based access.
  *
@@ -48,9 +71,10 @@ export class Bag {
     /**
      * Create a new Bag.
      *
-     * @param {Object} [source=null] - Optional dict to initialize from.
+     * @param {Object|Array|null} [source=null] - In-memory data with literal string labels.
+     * @param {{recursive?: boolean}} [options={}] - Convert nested containers (default true).
      */
-    constructor(source = null) {
+    constructor(source = null, options = {}) {
         this._nodes = new BagNodeContainer();
         this._backref = false;
         this._parent = null;
@@ -61,8 +85,9 @@ export class Bag {
         this._insSubscribers = {};
         this._delSubscribers = {};
 
-        if (source) {
-            this._loadSource(source);
+        ingestionOptions(options);
+        if (source !== null && source !== undefined) {
+            this.fillFrom(source, options);
         }
     }
 
@@ -717,7 +742,11 @@ export class Bag {
      * @param {Function} [options.delete] - Callback for delete events.
      * @param {Function} [options.any] - Callback for all events.
      */
-    subscribe(subscriberId, { update = null, insert = null, delete: del = null, any = null } = {}) {
+    subscribe(subscriberId, options = {}) {
+        if (Object.hasOwn(options, 'timer') || Object.hasOwn(options, 'interval')) {
+            throw new TypeError('Timer subscriptions were removed. Schedule polling in the application.');
+        }
+        const { update = null, insert = null, delete: del = null, any = null } = options;
         if (!this.backref) {
             this.setBackref();
         }
@@ -737,7 +766,11 @@ export class Bag {
      * @param {boolean} [options.delete=false] - Remove delete subscription.
      * @param {boolean} [options.any=false] - Remove all subscriptions.
      */
-    unsubscribe(subscriberId, { update = false, insert = false, delete: del = false, any = false } = {}) {
+    unsubscribe(subscriberId, options = {}) {
+        if (Object.hasOwn(options, 'timer') || Object.hasOwn(options, 'interval')) {
+            throw new TypeError('Timer subscriptions were removed. Schedule polling in the application.');
+        }
+        const { update = false, insert = false, delete: del = false, any = false } = options;
         if (update || any) {
             delete this._updSubscribers[subscriberId];
         }
@@ -1633,55 +1666,54 @@ export class Bag {
      * @param {Object} data - Object where keys become labels and values become node values.
      * @private
      */
-    _fillFromDict(data) {
-        this.clear();
-        for (const [key, value] of Object.entries(data)) {
-            if (value !== null && typeof value === 'object' && !Array.isArray(value)
-                    && !(value instanceof Bag) && !(value instanceof BagNode)) {
-                this.setItem(key, this.createChildBag()._loadSource(value));
-            } else {
-                this.setItem(key, value);
-            }
-        }
+    _appendLiteral(label, value, attr = null, resolver = null, nodeTag = null) {
+        if (typeof label !== 'string') throw new TypeError('Bag labels must be strings');
+        const node = new this.nodeClass(this, label, null, attr, resolver, nodeTag, null, false);
+        if (value instanceof BagResolver) node.resolver = value;
+        else node._value = value;
+        this._nodes._dict[label] = node;
+        this._nodes._list.push(node);
+        return node;
     }
 
-    /**
-     * Fill this Bag from a source (another Bag or plain object).
-     *
-     * Prepares replacement contents before changing this Bag:
-     * - If source is null/undefined: no-op
-     * - If source is a Bag: copies all nodes (deep copy for nested Bags)
-     * - If source is a plain object: keys become labels, values become node values.
-     *   Nested objects are recursively converted to Bags.
-     *
-     * Preparation errors leave this Bag unchanged. Attached Bags emit one
-     * upd_value event after replacement, carrying the previous content.
-     * Listener exceptions propagate after the replacement has committed.
-     *
-     * @param {Bag|Object|null} source - Source to fill from.
-     * @returns {Bag} This Bag (for chaining).
-     *
-     * @example
-     * const bag = new Bag();
-     * bag.replace(new Bag({ a: 1, b: { c: 2 } }));
-     * // bag has 'a' = 1, 'b' = Bag with 'c' = 2
-     *
-     * const other = new Bag();
-     * other.setItem('x', 10);
-     * bag.replace(other);
-     * // bag now has only 'x' = 10
-     */
-    _loadSource(source) {
-        if (source == null) return this;
-        const prepared = this.createChildBag();
-        if (source instanceof Bag) {
-            prepared._fillFromBag(source);
-        } else if (typeof source === 'object' && !Array.isArray(source)) {
-            prepared._fillFromDict(source);
-        } else {
-            return this;
+    /** Replace in-memory data atomically. None/null clears; leaves stay shared. */
+    fillFrom(source = null, options = {}) {
+        const recursive = ingestionOptions(options);
+        if (source != null && !isDictionary(source) && !Array.isArray(source)) {
+            throw new TypeError('Bag source must be a dictionary, array or null');
         }
+        const prepared = this.createChildBag();
+        const active = new Set();
+        const populate = (bag, data, path) => {
+            if (active.has(data)) throw new TypeError(`Cyclic Bag source at ${path}`);
+            active.add(data);
+            try {
+                const width = Array.isArray(data) ? String(data.length).length + 1 : 0;
+                const entries = Array.isArray(data)
+                    ? Array.from(data, (value, i) => [`r_${String(i).padStart(width, '0')}`, value])
+                    : Object.entries(data);
+                if (!Array.isArray(data) && Object.getOwnPropertySymbols(data)
+                    .some(key => Object.prototype.propertyIsEnumerable.call(data, key))) {
+                    throw new TypeError(`Bag labels must be strings at ${path}`);
+                }
+                for (const [label, item] of entries) {
+                    let value = item;
+                    if (recursive && (isDictionary(value) || Array.isArray(value))) {
+                        value = this.createChildBag();
+                        populate(value, item, `${path}[${JSON.stringify(label)}]`);
+                    }
+                    bag._appendLiteral(label, value);
+                }
+            } finally {
+                active.delete(data);
+            }
+        };
+        if (source != null) populate(prepared, source, '$');
         return this._replacePrepared(prepared);
+    }
+
+    _loadSource(source, options = {}) {
+        return this.fillFrom(source, options);
     }
 
     /** Replace all contents from a Bag, preserving identity. Returns this. */
@@ -1787,11 +1819,12 @@ export class Bag {
         let codeCounter = 0;
         // Class of each branch by path: a node's parent class decides whether
         // its branch needs __cls (parentBag is null when the backref is off).
-        const pathToClass = new Map([['', this.constructor]]);
+        const pathToClass = new Map([['[]', this.constructor]]);
 
         for (const [path, node] of serializationNodes(this)) {
-            const lastDot = path.lastIndexOf('.');
-            const parentPath = lastDot >= 0 ? path.slice(0, lastDot) : '';
+            const parentPath = path.slice(0, -1);
+            const pathKey = JSON.stringify(path);
+            const parentKey = JSON.stringify(parentPath);
 
             const nodeValue = node.getValue(true);
 
@@ -1803,29 +1836,29 @@ export class Bag {
             } else if (nodeValue instanceof Bag) {
                 const cls = nodeValue.constructor;
                 const suffix = cls.tytxSuffix;
-                pathToClass.set(path, cls);
-                branchCls = getClsMarker(cls, getInheritedClass(pathToClass.get(parentPath), suffix));
+                pathToClass.set(pathKey, cls);
+                branchCls = getClsMarker(cls, getInheritedClass(pathToClass.get(parentKey), suffix));
                 value = `::${suffix}`;
             } else if (nodeValue === null) {
                 value = '::NN';
             } else {
-                value = nodeValue;
+                value = wireValue(nodeValue);
             }
 
             if (node.attr && Object.hasOwn(node.attr, CLS_ATTRIBUTE)) {
                 throw new BagSerializationError(
                     `node '${path}': the attribute '${CLS_ATTRIBUTE}' is reserved for the Bag class name`);
             }
-            const attr = encodeAttrs(node.attr);
+            const attr = encodeAttrs(wireValue(node.attr));
             if (branchCls !== null) attr[CLS_ATTRIBUTE] = branchCls;
             const tag = node.nodeTag;
 
             if (compact) {
-                const parentRef = parentPath ? pathToCode[parentPath] : null;
+                const parentRef = parentPath.length ? pathToCode[parentKey] : null;
                 yield [parentRef, node.label, tag, value, attr];
 
                 if (nodeValue instanceof Bag) {
-                    pathToCode[path] = codeCounter;
+                    pathToCode[pathKey] = codeCounter;
                     pathRegistry[codeCounter] = path;
                     codeCounter++;
                 }
@@ -1847,6 +1880,16 @@ export class Bag {
      * @returns {string|Uint8Array} Serialized data.
      */
     toTytx(transport = 'json', compact = false) {
+        const payload = this._toTytxPayload(compact);
+        const suffix = this.constructor.tytxSuffix;
+        if (transport === 'json') return `${payload}::${suffix}`;
+        if (transport === 'msgpack') {
+            return msgpackEncode(new ExtData(4, new TextEncoder().encode(`${suffix}:${payload}`)));
+        }
+        throw new TypeError(`Unsupported transport: ${transport}`);
+    }
+
+    _toTytxPayload(compact = false) {
         let data;
 
         if (compact) {
@@ -1861,8 +1904,10 @@ export class Bag {
         const rootCls = getClsMarker(rootClass, getInheritedClass(null, rootClass.tytxSuffix));
         if (rootCls !== null) data[CLS_ATTRIBUTE] = rootCls;
 
-        const tytxTransport = transport === 'json' ? null : transport;
-        return tytxEncode(data, tytxTransport);
+        data.rows = data.rows.map(([parent, label, tag, value, attr]) =>
+            [wireValue(parent), wireValue(label), wireValue(tag), value, attr]);
+        if (data.paths) data.paths = wireValue(data.paths);
+        return tytxEncode(data);
     }
 
     /**
@@ -1872,13 +1917,31 @@ export class Bag {
      * @param {string} [transport='json'] - Input format: 'json' or 'msgpack'.
      * @returns {Bag} Reconstructed Bag.
      */
-    static fromTytx(data, transport = 'json') {
+    static fromTytx(data, transport = 'json', options = {}) {
+        if (isDictionary(transport)) { options = transport; transport = 'json'; }
+        ingestionOptions(options);
+        if (typeof data !== 'string' && !(data instanceof Uint8Array)) {
+            throw new TypeError('fromTytx requires serialized text or bytes');
+        }
+        if (transport !== 'json' && transport !== 'msgpack') {
+            throw new TypeError(`Unsupported transport: ${transport}`);
+        }
+        if (transport === 'json' && data instanceof Uint8Array) data = new TextDecoder().decode(data);
+        const decoded = tytxDecode(data, transport === 'json' ? null : transport);
+        if (decoded instanceof Bag) return decoded;
+        if (!isDictionary(decoded) && !Array.isArray(decoded)) {
+            throw new TypeError('fromTytx requires a dictionary, array or typed Bag root');
+        }
+        return new this(decoded, options);
+    }
+
+    static _fromTytxPayload(data) {
         // The payload alone decides the class of the root: without __cls it is
         // the class registered for the suffix (Bag for "X"), whatever this is.
         const suffix = this.tytxSuffix;
         // The registry passes an empty payload for a structural branch marker.
         if (data === '') return new (getInheritedClass(null, suffix))();
-        const parsed = tytxDecode(data, transport === 'json' ? null : transport);
+        const parsed = tytxDecode(data);
         if (!parsed || !Array.isArray(parsed.rows)) {
             throw new BagSerializationError('Invalid TYTX Bag: expected rows');
         }
@@ -1888,7 +1951,7 @@ export class Bag {
             ? getSubtypeClass(suffix, parsed[CLS_ATTRIBUTE])
             : getInheritedClass(null, suffix);
         const bag = new rootClass();
-        const pathToBag = new Map([['', bag]]);
+        const pathToBag = new Map([['[]', bag]]);
 
         for (const row of parsed.rows) {
             if (!Array.isArray(row) || row.length !== 5) {
@@ -1902,18 +1965,15 @@ export class Bag {
                 }
                 parentPath = parentRef === null ? '' : paths[parentRef];
             }
-            if (!pathToBag.has(parentPath)) {
+            if (typeof parentPath === 'string') parentPath = parentPath ? parentPath.split('.') : [];
+            if (!Array.isArray(parentPath)) throw new BagSerializationError('Invalid TYTX parent path');
+            const parentKey = JSON.stringify(parentPath);
+            if (!pathToBag.has(parentKey)) {
                 throw new BagSerializationError(`Missing or undecodable TYTX parent branch: ${parentPath}`);
             }
-            const parentBag = pathToBag.get(parentPath);
-            const fullPath = parentPath ? `${parentPath}.${label}` : label;
+            const parentBag = pathToBag.get(parentKey);
+            const fullPath = JSON.stringify([...parentPath, label]);
             let value = rawValue;
-            // MessagePack does not rescan text. Only Bag-owned empty markers
-            // are structural: arbitrary scalar decoders must never run here.
-            if (transport === 'msgpack' && typeof value === 'string' && value.startsWith('::')) {
-                const cls = getRegisteredType(value.slice(2));
-                if (cls === Bag || cls?.prototype instanceof Bag) value = tytxDecode(value);
-            }
             const resolver = decodeResolver(value);
             const attr = decodeAttrs(rawAttr);
             const branchCls = Object.hasOwn(attr, CLS_ATTRIBUTE) ? attr[CLS_ATTRIBUTE] : null;
@@ -1929,10 +1989,8 @@ export class Bag {
             } else if (branchCls !== null) {
                 throw new BagSerializationError(
                     `node '${fullPath}': the attribute '${CLS_ATTRIBUTE}' is reserved for the Bag class name of a branch`);
-            } else if (value === '::NN') {
-                value = null;
             }
-            const node = parentBag.setItem(label, resolver || value, attr);
+            const node = parentBag._appendLiteral(label, resolver ? null : value, attr, resolver);
             node.nodeTag = tag ?? null;
         }
         return bag;
@@ -2198,7 +2256,7 @@ export class Bag {
         const text = await response.text();
 
         if (contentType.includes('json')) {
-            return Bag.fromJson(text);
+            return Bag.fromTytx(text);
         }
         if (contentType.includes('xml')) {
             return Bag.fromXml(text);
@@ -2209,7 +2267,7 @@ export class Bag {
             return Bag.fromXml(text);
         }
         if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-            return Bag.fromJson(text);
+            return Bag.fromTytx(text);
         }
         throw new BagException(`Unsupported content-type: ${contentType}`);
     }
@@ -2262,79 +2320,17 @@ export class Bag {
     }
 
     /**
-     * Deserialize JSON to Bag.
-     *
-     * Accepts JSON string, dict, or list. Recursively converts nested
-     * structures to Bag hierarchy.
-     *
-     * @param {string|Object|Array} source - JSON string, dict or list to parse.
-     * @param {string} [listJoiner=null] - If provided, join string arrays with this separator.
-     * @returns {Bag} Deserialized Bag.
+     * Deprecated alias of fromTytx: serialized text only, no node heuristics.
+     * @deprecated Use fromTytx, or new Bag(data) for native dictionaries/arrays.
+     * @param {string|Uint8Array} source
+     * @param {{recursive?: boolean}} [options={}]
      */
-    static fromJson(source, listJoiner = null) {
-        if (typeof source === 'string') {
-            source = tytxDecode(source);
+    static fromJson(source, options = {}) {
+        if (!warnedFromJson) {
+            console.warn('Bag.fromJson is deprecated; use Bag.fromTytx');
+            warnedFromJson = true;
         }
-
-        if (!Array.isArray(source) && typeof source !== 'object') {
-            source = { value: source };
-        }
-
-        return Bag._fromJsonRecursive(source, listJoiner);
-    }
-
-    /**
-     * Recursively convert JSON data to Bag (internal).
-     * @private
-     */
-    static _fromJsonRecursive(data, listJoiner = null) {
-        if (data instanceof Bag) return data;
-        if (Array.isArray(data)) {
-            // listJoiner: join string arrays into a single string
-            if (listJoiner !== null && data.every(item => typeof item === 'string')) {
-                return data.join(listJoiner);
-            }
-
-            if (data.length === 0) {
-                return new Bag();
-            }
-
-            // Check if list items have 'label' key (Bag node format)
-            if (typeof data[0] === 'object' && data[0] !== null && 'label' in data[0]) {
-                const result = new Bag();
-                for (const item of data) {
-                    const label = item.label;
-                    const value = Bag._fromJsonRecursive(item.value, listJoiner);
-                    const attr = decodeAttrs(item.attr);
-                    const node = result.setItem(label, value, attr);
-                    node.nodeTag = item.tag ?? null;
-                    const resolver = decodeResolver(item.resolver);
-                    if (resolver) node.resolver = resolver;
-                }
-                return result;
-            }
-
-            // Generic list -> Bag with r_N keys
-            const result = new Bag();
-            for (let n = 0; n < data.length; n++) {
-                result.setItem(`r_${n}`, Bag._fromJsonRecursive(data[n], listJoiner));
-            }
-            return result;
-        }
-
-        if (typeof data === 'object' && data !== null) {
-            if (Object.keys(data).length === 0) {
-                return new Bag();
-            }
-            const result = new Bag();
-            for (const [k, v] of Object.entries(data)) {
-                result.setItem(k, Bag._fromJsonRecursive(v, listJoiner));
-            }
-            return result;
-        }
-
-        // Scalar value
-        return data;
+        return this.fromTytx(source, 'json', options);
     }
 
     // -------------------------------------------------------------------------
@@ -2511,7 +2507,7 @@ export class BagException extends Error {
 BagResolver.registerBagClass(Bag);
 
 // Shared TYTX registry: subclasses register their own wire suffix explicitly.
-registerClass(Bag);
+registerType(Bag, 'X', bag => bag._toTytxPayload(), payload => Bag._fromTytxPayload(payload));
 // Bag is the base class of the "X" type: its name must be in the subtype
 // dictionary like every subclass that travels as "::X" with a __cls name.
 setSubtypeDict(Bag.tytxSuffix, { ...getSubtypeDict(Bag.tytxSuffix), Bag });

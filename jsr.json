@@ -1,6 +1,6 @@
 {
   "name": "@genro/bag",
-  "version": "0.10.3",
+  "version": "0.11.0",
   "license": "Apache-2.0",
   "exports": "./src/index.js",
   "publish": {
@@ -10,11 +10,13 @@
       "package.json",
       "README.md",
       "LICENSE",
-      "NOTICE"
+      "NOTICE",
+      "docs/migration-ingestion.md",
+      "docs/python-alignment.md"
     ]
   },
   "imports": {
-    "@genrojs/tytx": "jsr:@genro/tytx@^0.16.1"
+    "@genrojs/tytx": "jsr:@genro/tytx@^0.16.2"
   },
   "nodeModulesDir": "auto",
   "lock": false,

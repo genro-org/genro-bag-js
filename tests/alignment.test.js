@@ -1,5 +1,6 @@
 // Copyright 2026 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
 // Contract tests for the Python/JS alignment agreed on 2026-09-08.
+import { encode, ExtData } from '@msgpack/msgpack';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Bag, BagCbResolver, BagResolver, BagSerializationError, OpaqueResolver,
@@ -7,7 +8,13 @@ import { Bag, BagCbResolver, BagResolver, BagSerializationError, OpaqueResolver,
 import { registerClass, registerType, toTytx, fromTytx } from '@genrojs/tytx';
 
 class SourceBag extends Bag { static tytxSuffix = 'SOURCE'; }
-registerClass(SourceBag);
+registerType(SourceBag, 'SOURCE', bag => bag._toTytxPayload(), data => SourceBag._fromTytxPayload(data));
+
+function markedRows(data, transport) {
+    const payload = toTytx(data);
+    return transport === 'json' ? `${payload}::X`
+        : encode(new ExtData(4, new TextEncoder().encode(`X:${payload}`)));
+}
 
 for (const transport of ['json', 'msgpack']) {
     for (const compact of [false, true]) {
@@ -38,10 +45,10 @@ for (const transport of ['json', 'msgpack']) {
         for (const [paths, parent] of [[undefined, 'missing'], [{ '0': 'branch' }, 99], [{}, 0], [undefined, 0]]) {
             const data = { rows: [[parent, 'child', null, 42, {}]] };
             if (paths !== undefined) data.paths = paths;
-            assert.throws(() => Bag.fromTytx(toTytx(data, transport === 'json' ? null : transport), transport), BagSerializationError);
+            assert.throws(() => Bag.fromTytx(markedRows(data, transport), transport), BagSerializationError);
         }
         const data = { rows: [['', 'unknown', null, '::UNKNOWNBRANCH', {}], ['unknown', 'child', null, 42, {}]] };
-        assert.throws(() => Bag.fromTytx(toTytx(data, transport === 'json' ? null : transport), transport), /parent branch/);
+        assert.throws(() => Bag.fromTytx(markedRows(data, transport), transport), /parent branch/);
     });
 }
 
@@ -75,7 +82,7 @@ test('JSON round-trip keeps tags on leaves and branches', () => {
     const b = new Bag({ a: new Bag({ b: 1 }), c: null });
     b.getNode('a').nodeTag = 'div'; b.getNode('a.b').nodeTag = 'span';
     for (const typed of [true, false]) {
-        const result = Bag.fromJson(b.toJson(typed));
+        const result = Bag.fromJson(b.toTytx('json', typed));
         assert.equal(result.getNode('a').nodeTag, 'div');
         assert.equal(result.getNode('a.b').nodeTag, 'span');
         assert.equal(result.getNode('c').nodeTag, null);
@@ -112,8 +119,8 @@ registerResolver(NumberResolver, {
 const roundTrips = {
     tytx: b => Bag.fromTytx(b.toTytx()),
     msgpack: b => Bag.fromTytx(b.toTytx('msgpack'), 'msgpack'),
-    json: b => Bag.fromJson(b.toJson()),
-    plainJson: b => Bag.fromJson(b.toJson(false)),
+    json: b => Bag.fromJson(b.toTytx()),
+    plainJson: b => Bag.fromTytx(b.toTytx()),
     xml: b => Bag.fromXml(`<root>${b.toXml()}</root>`),
 };
 for (const [format, roundTrip] of Object.entries(roundTrips)) {
@@ -134,7 +141,8 @@ for (const [format, roundTrip] of Object.entries(roundTrips)) {
     test(`opaque and signed descriptions survive ${format} byte for byte`, () => {
         const unknown = '::RSLV:{ "resolver_module": "server", "resolver_class": "OnlyServer", "args": [], "kwargs": {} }';
         const signed = '::RSLV:eyJwYXlsb2FkIjoidW5pY29kZSJ9..c2lnbmF0dXJl';
-        const b = Bag.fromJson([{ label: 'n', value: null, resolver: unknown, attr: { r: signed } }]);
+        const b = new Bag();
+        b.setItem('n', new OpaqueResolver(unknown), {r: new OpaqueResolver(signed)});
         const result = roundTrip(b);
         assert.ok(result.getNode('n').resolver instanceof OpaqueResolver);
         assert.equal(result.getNode('n').resolver.payload, unknown);
