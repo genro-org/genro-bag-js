@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.1 — 2026-10-27
+
+- Preserve the deletion reason in popNode, pop and delItem notifications.
+  The reason no longer occupies the pathlist argument or corrupts nested paths.
+  Regression coverage checks root and nested deletion events.
+
 ## 0.11.0 — 2026-10-14
 
 - Align passive resolver behavior with Python: reject removed scheduling options, keep reset lazy, and let node attributes override resolver defaults. See the migration note.

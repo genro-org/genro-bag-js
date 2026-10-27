@@ -457,7 +457,7 @@ export class Bag {
         if (p >= 0) {
             const node = this._nodes.pop(p);
             if (this.backref) {
-                this._onNodeDeleted(node, p, reason);
+                this._onNodeDeleted(node, p, null, reason);
             }
             return node;
         }
