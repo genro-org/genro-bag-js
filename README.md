@@ -1,5 +1,7 @@
 # genro-bag-js
 
+Current release: **0.11.1**. Fixes deletion origin propagation in `popNode`, `pop` and `delItem`.
+
 > **0.11.0 — breaking API:** read the [ingestion and scheduling migration note](docs/migration-ingestion.md) before upgrading dependent projects.
 
 TypeScript/JavaScript port of [genro-bag](https://github.com/nicofirst1/genro-bag) - hierarchical data container with XML serialization, Builder pattern, and Compiler system.
