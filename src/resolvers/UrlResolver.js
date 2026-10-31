@@ -60,8 +60,7 @@ export class UrlResolver extends BagResolver {
     static classArgs = ['url'];
 
     static internalParams = new Set([
-        'cacheTime', 'readOnly', 'retryPolicy', 'asBag',
-        'url', 'method', 'qs', 'body', 'timeout', 'transport'
+        'cacheTime', 'readOnly', 'retryPolicy', 'asBag'
     ]);
 
     /**
@@ -87,12 +86,12 @@ export class UrlResolver extends BagResolver {
      * @returns {Promise<*>} Response data.
      */
     async load(kwargs) {
-        let url = this._kw.url;
-        const method = this._kw.method;
-        const qs = this._kw.qs;
-        const timeout = this._kw.timeout;
-        const transport = this._kw.transport;
-        let body = this._kw.body;
+        let url = kwargs.url;
+        const method = kwargs.method;
+        const qs = kwargs.qs;
+        const timeout = kwargs.timeout;
+        const transport = kwargs.transport;
+        let body = kwargs.body;
 
         // _body overrides constructor body
         if (kwargs._body !== undefined) {

@@ -1,5 +1,29 @@
 # Breaking changes
 
+## Unreleased
+
+### Resolver inputs are the declared parameters (#74)
+
+Node attributes reach `load()` and the cache fingerprint only for the
+parameters declared at construction (`classKwargs`, `classArgs`, extra
+constructor kwargs). Any other attribute, such as `__checked` or `checked`,
+never reaches `load()` and never reloads the resolver. Same rule as genro-bag
+(Python).
+
+- A parameter meant to change on the node after construction must be declared
+  in the constructor, with `null` if it has no initial value.
+- `UrlResolver`: `url`, `method`, `qs`, `body`, `timeout` and `transport` are
+  declared parameters instead of internal ones. A change on the node reaches
+  `load()` and invalidates the cache.
+
+### Read-time resolver kwargs are a one-off read (#75)
+
+`resolve({x: 1})` and `node.getValue(false, null, {x: 1})` load with the
+kwargs for that call only, undeclared keys included. The result and the
+parameter fingerprint are no longer written to the cache: the next plain read
+uses the cached value of the node's own parameters.
+
+
 ## 0.9.0
 
 ### Bag subclasses on the TYTX wire: `__cls`

@@ -43,16 +43,17 @@ test('readonly zero cache reloads without storing, negative cache stores even nu
     }
 });
 
-test('readonly cache invalidates when effective call or node parameters change', () => {
-    const {resolver, calls} = counter({cacheTime: -1, readOnly: true});
+test('readonly cache invalidates when declared node parameters change; call kwargs are one-off', () => {
+    const {resolver, calls} = counter({cacheTime: -1, readOnly: true, factor: null});
     const node = new BagNode(null, 'value', 'static', {factor: 2}, resolver);
     assert.equal(node.getValue(), 1);
     assert.equal(node.getValue(), 1);
     node.setAttr({factor: 3});
     assert.equal(node.getValue(), 2);
     assert.equal(resolver.resolve({factor: 4}), 3);
-    assert.equal(resolver.resolve({factor: 4}), 3);
-    assert.deepEqual(calls.map(kw => kw.factor), [2, 3, 4]);
+    assert.equal(resolver.resolve({factor: 4}), 4);
+    assert.equal(node.getValue(), 2);
+    assert.deepEqual(calls.map(kw => kw.factor), [2, 3, 4, 4]);
     assert.equal(node.staticValue, 'static');
 });
 

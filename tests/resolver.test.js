@@ -317,7 +317,8 @@ describe('BagCbResolver', () => {
 
         it('should use node attributes as kwargs', () => {
             const resolver = new BagCbResolver({
-                callback: (kw) => kw.multiplier * 10
+                callback: (kw) => kw.multiplier * 10,
+                multiplier: 1
             });
             const node = new BagNode(null, 'test', null, { multiplier: 5 });
             resolver.setNode(node);
@@ -408,34 +409,65 @@ describe('BagResolver with retryPolicy', () => {
     });
 });
 
-// Aligned with Python genro-bag 0.11.0
+// Aligned with Python genro-bag (#74, #75)
 describe('BagResolver fingerprint cache', () => {
-    it('should reload when kwargs change even if cache not expired', () => {
-        let lastKwargs = null;
+    it('should reload when declared node params change even if cache not expired', () => {
         let callCount = 0;
         class TestResolver extends BagResolver {
             load(kwargs) {
                 callCount++;
-                lastKwargs = { ...kwargs };
                 return kwargs.x * 2;
             }
         }
-        const resolver = new TestResolver({ cacheTime: -1 }); // cache forever
+        const resolver = new TestResolver({ cacheTime: -1, x: 10 }); // cache forever
         const node = new BagNode(null, 'test', null);
         resolver.setNode(node);
 
-        resolver.resolve({ x: 10 });
+        resolver.resolve();
         assert.strictEqual(callCount, 1);
         assert.strictEqual(node.staticValue, 20);
 
-        // Same kwargs → should use cache
-        resolver.resolve({ x: 10 });
+        // Same params → should use cache
+        resolver.resolve();
         assert.strictEqual(callCount, 1);
 
-        // Different kwargs → should reload despite cache forever
-        resolver.resolve({ x: 20 });
+        // Declared param changed on the node → should reload despite cache forever
+        node.setAttr({ x: 20 });
+        resolver.resolve();
         assert.strictEqual(callCount, 2);
         assert.strictEqual(node.staticValue, 40);
+    });
+
+    it('should treat call kwargs as a one-off read', () => {
+        let callCount = 0;
+        class TestResolver extends BagResolver {
+            load(kwargs) {
+                callCount++;
+                return kwargs.x * 2;
+            }
+        }
+        const resolver = new TestResolver({ cacheTime: -1, x: 10 });
+        const node = new BagNode(null, 'test', null);
+        resolver.setNode(node);
+
+        assert.strictEqual(resolver.resolve(), 20);
+        assert.strictEqual(resolver.resolve({ x: 30 }), 60);
+        assert.strictEqual(resolver.resolve({ x: 30 }), 60);
+        assert.strictEqual(callCount, 3);
+        // Node value, node attributes and cache are unchanged
+        assert.strictEqual(node.staticValue, 20);
+        assert.strictEqual(node.attr.x, undefined);
+        assert.strictEqual(resolver.resolve(), 20);
+        assert.strictEqual(callCount, 3);
+    });
+
+    it('should pass undeclared call kwargs to load', () => {
+        const received = [];
+        const resolver = new BagCbResolver({ callback: kw => received.push(kw), a: 1, cacheTime: -1 });
+        resolver.resolve({ page: 2 });
+        assert.deepStrictEqual(received, [{ a: 1, page: 2 }]);
+        resolver.resolve();
+        assert.deepStrictEqual(received[1], { a: 1 });
     });
 });
 

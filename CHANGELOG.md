@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Resolver inputs are the declared parameters: undeclared node attributes no
+  longer reach `load()` or reload the resolver (#74).
+- `UrlResolver` reads `url`, `method`, `qs`, `body`, `timeout` and `transport`
+  as declared parameters; before, `load()` read them from `_kw`, where they
+  were never stored, so the URL was undefined.
+- Read-time kwargs are a one-off read and no longer write the cache (#75).
+
 ## 0.11.1 — 2026-10-27
 
 - Preserve the deletion reason in popNode, pop and delItem notifications.

@@ -331,11 +331,32 @@ export class BagResolver {
     }
 
     /**
+     * Merge resolver._kw with node attributes for declared parameters only.
+     *
+     * A node attribute the resolver does not declare (UI metadata such as
+     * '__checked') never reaches load() and never changes the fingerprint.
+     *
+     * @returns {Object} The effective kwargs.
+     * @private
+     */
+    _buildEffectiveKw() {
+        const kwargs = { ...this._kw };
+        if (this._node && this._node.attr) {
+            for (const key of Object.keys(this._kw)) {
+                if (Object.hasOwn(this._node.attr, key)) {
+                    kwargs[key] = this._node.attr[key];
+                }
+            }
+        }
+        return kwargs;
+    }
+
+    /**
      * Resolve the value. Main entry point.
      *
      * @param {Object} options - Resolution options.
      * @param {boolean} options.static - If true, return cached value without resolving.
-     * @param {Object} options.kwargs - Additional kwargs merged with resolver's _kw.
+     * @param {Object} options.kwargs - Parameters for this read only (one-off, never cached).
      * @returns {*} The resolved value (or Promise if load() is async).
      */
     resolve(options = {}) {
@@ -346,21 +367,18 @@ export class BagResolver {
             return this._node ? this._node._value : this.cachedValue;
         }
 
-        // Build kwargs: resolver._kw merged with call kwargs
-        // Node attributes can also contribute (priority: callKwargs > node.attr > _kw)
-        const kwargs = { ...this._kw };
-        if (this._node && this._node.attr) {
-            const internalParams = this.constructor.internalParams;
-            for (const [key, value] of Object.entries(this._node.attr)) {
-                if (!internalParams.has(key)) {
-                    kwargs[key] = value;
-                }
-            }
+        // Node attributes contribute only for declared parameters
+        // (priority: callKwargs > node.attr > _kw)
+        const kwargs = this._buildEffectiveKw();
+
+        // Call kwargs make a one-off read: loaded for this call only,
+        // never cached, node untouched
+        if (Object.keys(callKwargs).length > 0) {
+            return this._load({ ...kwargs, ...callKwargs }, value => this._prepareValue(value));
         }
-        Object.assign(kwargs, callKwargs);
 
         // Fingerprint-based cache invalidation:
-        // If params changed, force reload even if TTL hasn't expired
+        // If declared params changed on the node, force reload even if TTL hasn't expired
         const currentFingerprint = this._computeEffectiveFingerprint(kwargs);
         if (currentFingerprint === this._lastEffectiveFingerprint
             && !this.expired) {
@@ -368,23 +386,32 @@ export class BagResolver {
         }
         this._lastEffectiveFingerprint = currentFingerprint;
 
-        // Get retry policy
-        const policy = getRetryPolicy(this);
+        return this._load(kwargs, value => this._finalize(value));
+    }
 
-        // Call load with retry
+    /**
+     * Call load() with the retry policy, then apply the given completion.
+     *
+     * @param {Object} kwargs - Parameters for load().
+     * @param {Function} complete - Applied to the loaded value.
+     * @returns {*} The completed value (or Promise if load() is async).
+     * @private
+     */
+    _load(kwargs, complete) {
+        const policy = getRetryPolicy(this);
         const doLoad = () => this.load(kwargs);
 
         if (policy) {
             // With retry - always async
-            return withRetry(doLoad, policy).then(value => this._finalize(value));
+            return withRetry(doLoad, policy).then(complete);
         }
 
         // Without retry - can be sync or async
         const result = doLoad();
         if (result && typeof result.then === 'function') {
-            return result.then(value => this._finalize(value));
+            return result.then(complete);
         }
-        return this._finalize(result);
+        return complete(result);
     }
 
     /**
@@ -395,6 +422,26 @@ export class BagResolver {
      * @private
      */
     _finalize(value) {
+        value = this._prepareValue(value);
+
+        this._lastUpdate = Date.now();
+
+        // Cache duration and node storage policy are independent.
+        if (!this.readOnly || this.cacheTime !== 0) {
+            this.cachedValue = value;
+        }
+
+        return value;
+    }
+
+    /**
+     * Apply asBag conversion to a loaded value without storing it.
+     *
+     * @param {*} value - The loaded value.
+     * @returns {*} The value (possibly converted to Bag).
+     * @private
+     */
+    _prepareValue(value) {
         // asBag conversion:
         //   true  → always convert
         //   false → never convert
@@ -411,14 +458,6 @@ export class BagResolver {
         if (shouldConvert && value !== null && value !== undefined) {
             value = this._convertToBag(value);
         }
-
-        this._lastUpdate = Date.now();
-
-        // Cache duration and node storage policy are independent.
-        if (!this.readOnly || this.cacheTime !== 0) {
-            this.cachedValue = value;
-        }
-
         return value;
     }
 
