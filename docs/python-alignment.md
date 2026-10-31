@@ -162,7 +162,8 @@ Bag does not own a scheduler in either language. Resolver `interval` and
 `reactive` options and subscription `timer` / `interval` options raise TypeError.
 `reset()` only invalidates the cache, with no refresh argument. Attachment,
 attribute changes and TTL expiry do not start background loads. Node attributes
-override resolver defaults on the next read; explicit call parameters have the
-highest priority. Applications schedule polling and publish results with
+override resolver defaults on the next read, for declared parameters only;
+explicit call parameters have the highest priority and make a one-off read that
+is never cached. Applications schedule polling and publish results with
 `setItem` when observers need a mutation event. See the
 [migration note](migration-ingestion.md#no-internal-scheduling).
