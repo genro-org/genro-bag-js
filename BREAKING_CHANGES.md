@@ -1,6 +1,6 @@
 # Breaking changes
 
-## Unreleased
+## 0.12.0
 
 ### Resolver inputs are the declared parameters (#74)
 

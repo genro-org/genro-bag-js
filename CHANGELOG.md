@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.12.0 — 2026-11-01
 
 - Resolver inputs are the declared parameters: undeclared node attributes no
   longer reach `load()` or reload the resolver (#74).
